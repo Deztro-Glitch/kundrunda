@@ -1,8 +1,9 @@
 // Enkel lagring i iPadens IndexedDB. Inget skickas någonstans.
-// Tabeller: visits (besök), places (platser), items (kärl), photos (bilder som Blob).
+// Tabeller: visits (besök), places (platser), items (kärl), photos (bilder som Blob), ideas (idéer).
+import { normalizeItem } from './data.js';
 
 const DB_NAME = 'kundrunda';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 let dbPromise;
 
 function open() {
@@ -11,27 +12,28 @@ function open() {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
-      if (!db.objectStoreNames.contains('visits')) {
-        db.createObjectStore('visits', { keyPath: 'id' });
-      }
-      if (!db.objectStoreNames.contains('places')) {
-        const s = db.createObjectStore('places', { keyPath: 'id' });
-        s.createIndex('visitId', 'visitId');
-      }
-      if (!db.objectStoreNames.contains('items')) {
-        const s = db.createObjectStore('items', { keyPath: 'id' });
-        s.createIndex('visitId', 'visitId');
-        s.createIndex('placeId', 'placeId');
-      }
-      if (!db.objectStoreNames.contains('photos')) {
-        const s = db.createObjectStore('photos', { keyPath: 'id' });
-        s.createIndex('visitId', 'visitId');
-        s.createIndex('placeId', 'placeId');
-        s.createIndex('itemId', 'itemId');
-      }
+      const make = (name, indexes) => {
+        if (db.objectStoreNames.contains(name)) return;
+        const s = db.createObjectStore(name, { keyPath: 'id' });
+        indexes.forEach((i) => s.createIndex(i, i));
+      };
+      make('visits', []);
+      make('places', ['visitId']);
+      make('items', ['visitId', 'placeId']);
+      make('photos', ['visitId', 'placeId', 'itemId']);
+      make('ideas', ['visitId', 'placeId', 'itemId']);
     };
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => {
+      const db = req.result;
+      // En nyare version av appen (i en annan flik) vill uppgradera: släpp databasen och ladda om.
+      db.onversionchange = () => { db.close(); location.reload(); };
+      resolve(db);
+    };
     req.onerror = () => reject(req.error);
+    req.onblocked = () => {
+      document.getElementById('main').innerHTML =
+        '<div class="empty"><p><b>Appen har uppdaterats.</b></p><p>Stäng andra flikar med Kundrunda och öppna appen igen.</p></div>';
+    };
   });
   return dbPromise;
 }
@@ -46,19 +48,22 @@ async function store(name, mode = 'readonly') {
   return db.transaction(name, mode).objectStore(name);
 }
 
+const fix = (name, rows) => (name === 'items' ? rows.map(normalizeItem) : rows);
+
 export const uid = () =>
   (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
 
 export async function get(name, id) {
-  return wrap((await store(name)).get(id));
+  const row = await wrap((await store(name)).get(id));
+  return name === 'items' ? normalizeItem(row) : row;
 }
 
 export async function all(name) {
-  return wrap((await store(name)).getAll());
+  return fix(name, await wrap((await store(name)).getAll()));
 }
 
 export async function by(name, index, value) {
-  return wrap((await store(name)).index(index).getAll(value));
+  return fix(name, await wrap((await store(name)).index(index).getAll(value)));
 }
 
 export async function put(name, obj) {
@@ -78,9 +83,19 @@ async function delMany(name, index, value) {
   await Promise.all(rows.map((r) => wrap(s.delete(r.id))));
 }
 
+// Idéer tas aldrig bort av misstag – de kopplas bara loss och hamnar under "hela besöket".
+async function unlinkIdeas(index, value) {
+  const rows = await by('ideas', index, value);
+  for (const r of rows) {
+    if (index === 'placeId') { r.placeId = null; r.itemId = null; } else r.itemId = null;
+    await put('ideas', r);
+  }
+}
+
 // Ta bort ett kärl med dess bilder.
 export async function deleteItem(id) {
   await delMany('photos', 'itemId', id);
+  await unlinkIdeas('itemId', id);
   await del('items', id);
 }
 
@@ -88,6 +103,7 @@ export async function deleteItem(id) {
 export async function deletePlace(id) {
   await delMany('photos', 'placeId', id);
   await delMany('items', 'placeId', id);
+  await unlinkIdeas('placeId', id);
   await del('places', id);
 }
 
@@ -96,7 +112,20 @@ export async function deleteVisit(id) {
   await delMany('photos', 'visitId', id);
   await delMany('items', 'visitId', id);
   await delMany('places', 'visitId', id);
+  await delMany('ideas', 'visitId', id);
   await del('visits', id);
+}
+
+// Allt som hör till ett besök, på en gång.
+export async function loadVisit(id) {
+  const visit = await get('visits', id);
+  if (!visit) return null;
+  const [places, items, photos, ideas] = await Promise.all([
+    by('places', 'visitId', id), by('items', 'visitId', id),
+    by('photos', 'visitId', id), by('ideas', 'visitId', id),
+  ]);
+  const order = (a, b) => a.createdAt - b.createdAt;
+  return { visit, places: places.sort(order), items: items.sort(order), photos: photos.sort(order), ideas: ideas.sort(order) };
 }
 
 // Be Safari att inte rensa datan automatiskt.

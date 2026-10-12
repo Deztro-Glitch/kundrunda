@@ -1,68 +1,20 @@
 import * as db from './db.js';
 import { compress } from './image.js';
-import { TYPES, typeOf, I } from './icons.js';
+import { I } from './icons.js';
+import {
+  TYPES, typeOf, itemLabel, contentText, MATERIALS, HAZARDOUS, FILLS, FREQS, SUPPLIERS,
+  FLAGS, RISK_FLAGS, PLACE_SUGGESTIONS,
+} from './data.js';
+import {
+  esc, today, MONTHS, prettyDate, plural, go, byCreated, photoUrl, revokeUrls, toast, openViewer,
+} from './util.js';
+import { presentView, leavePresent } from './present.js';
+import { exportVisitJson } from './export.js';
 
-// ---------- Listor att välja från ----------
-const MATERIALS = [
-  'Brännbart', 'Restavfall', 'Wellpapp', 'Kontorspapper', 'Plastförpackningar', 'Mjukplast',
-  'Metall', 'Glas', 'Matavfall', 'Trä', 'Elavfall', 'Farligt avfall', 'Batterier', 'Lysrör',
-];
-const FILLS = [
-  { key: 'tomt', label: 'Tomt', pct: 0 },
-  { key: 'halvt', label: 'Halvt', pct: 50 },
-  { key: 'fullt', label: 'Fullt', pct: 100 },
-  { key: 'overfullt', label: 'Överfullt', pct: 100, over: true },
-];
-const FREQS = ['1 gång/vecka', 'Varannan vecka', '1 gång/månad', 'Vid behov', 'Vet ej'];
-const SUPPLIERS = ['Ragn-Sells', 'Annan leverantör', 'Vet ej'];
-const FLAGS = [
-  'Felsorterat', 'Överfullt', 'Trångt/svårt att nå', 'Saknar skylt',
-  'Dålig ordning', 'Kan sorteras ut', 'Säkerhetsrisk',
-];
-const RISK_FLAGS = ['Säkerhetsrisk'];
-const PLACE_SUGGESTIONS = [
-  'Lastkajen', 'Verkstaden', 'Personalrummet', 'Kontoret', 'Lagret',
-  'Produktionen', 'Miljöstationen', 'Soprummet', 'Utomhus',
-];
-
-// ---------- Hjälpfunktioner ----------
 const topbar = document.getElementById('topbar');
 const main = document.getElementById('main');
 const camera = document.getElementById('camera');
 const library = document.getElementById('library');
-
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
-  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-
-const today = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
-const MONTHS = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
-const prettyDate = (iso) => {
-  if (!iso) return '';
-  const [y, m, d] = iso.split('-').map(Number);
-  return `${d} ${MONTHS[m - 1]} ${y}`;
-};
-const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
-const go = (hash) => { location.hash = hash; };
-
-// Bild-URL:er frigörs när man byter sida så minnet inte tar slut.
-let urls = [];
-const photoUrl = (p) => { const u = URL.createObjectURL(p.blob); urls.push(u); return u; };
-const revokeUrls = () => { urls.forEach((u) => URL.revokeObjectURL(u)); urls = []; };
-
-let toastTimer;
-function toast(msg, ms = 2400) {
-  document.querySelector('.toast')?.remove();
-  const t = document.createElement('div');
-  t.className = 'toast';
-  t.textContent = msg;
-  document.body.appendChild(t);
-  clearTimeout(toastTimer);
-  if (ms) toastTimer = setTimeout(() => t.remove(), ms);
-  return t;
-}
 
 function flashSaved() {
   const s = topbar.querySelector('.saved');
@@ -106,8 +58,7 @@ function bindFields(root, obj, store, onChange) {
   });
 }
 
-// ---------- Kamera ----------
-// Kameran tar en bild. Bildbiblioteket låter dig välja flera på en gång.
+// ---------- Kamera och bildbibliotek ----------
 function pickPhoto(onFile, { fromLibrary = false } = {}) {
   const input = fromLibrary ? library : camera;
   input.value = '';
@@ -128,28 +79,6 @@ async function addPhoto(file, link) {
   return db.put('photos', { id: db.uid(), ...link, blob, width, height });
 }
 
-function openViewer(photo, onDeleted) {
-  const v = document.createElement('div');
-  v.className = 'viewer';
-  const url = URL.createObjectURL(photo.blob);
-  v.innerHTML = `
-    <div class="bar">
-      <button class="btn danger" data-del>${I.trash} Ta bort bild</button>
-      <button class="btn ghost" data-close>${I.close} Stäng</button>
-    </div>
-    <div class="img"><img src="${url}" alt=""></div>`;
-  const close = () => { URL.revokeObjectURL(url); v.remove(); };
-  v.querySelector('[data-close]').onclick = close;
-  v.querySelector('.img').onclick = (e) => { if (e.target.tagName !== 'IMG') close(); };
-  v.querySelector('[data-del]').onclick = async () => {
-    if (!confirm('Ta bort bilden?')) return;
-    await db.del('photos', photo.id);
-    close();
-    onDeleted?.();
-  };
-  document.body.appendChild(v);
-}
-
 function photosHtml(photos, addLabel = 'Ta bild') {
   return `<div class="photos">
     <button class="add-photo" data-add-photo>${I.camera}<span>${addLabel}</span></button>
@@ -158,14 +87,71 @@ function photosHtml(photos, addLabel = 'Ta bild') {
   </div>`;
 }
 
-function bindPhotos(root, photos, link, refreshFn) {
-  root.querySelector('[data-add-photo]')?.addEventListener('click', () =>
-    pickPhoto(async (file) => { await addPhoto(file, link); refreshFn(); }));
-  root.querySelector('[data-add-library]')?.addEventListener('click', () =>
-    pickPhoto(async (file) => { await addPhoto(file, link); refreshFn(); }, { fromLibrary: true }));
-  root.querySelectorAll('[data-photo]').forEach((b) => {
-    b.onclick = () => openViewer(photos.find((p) => p.id === b.dataset.photo), refreshFn);
+function bindPhotos(root, photos, link) {
+  const add = (fromLibrary) => pickPhoto(async (file) => { await addPhoto(file, link); refresh(); }, { fromLibrary });
+  root.querySelector('[data-add-photo]')?.addEventListener('click', () => add(false));
+  root.querySelector('[data-add-library]')?.addEventListener('click', () => add(true));
+  root.querySelectorAll('.photos [data-photo]').forEach((b) => {
+    const photo = photos.find((p) => p.id === b.dataset.photo);
+    b.onclick = () => openViewer(photo, { onDelete: async () => { await db.del('photos', photo.id); refresh(); } });
   });
+}
+
+// ---------- Idéer ----------
+// Listan visas på besöket, platsen och kärlet. Varje idé kan kopplas till en plats eller ett kärl.
+let focusIdea = null;
+
+function ideasHtml(ideas, places, items) {
+  const option = (val, label, sel) => `<option value="${val}" ${sel ? 'selected' : ''}>${esc(label)}</option>`;
+  const options = (idea) => {
+    const cur = idea.itemId ? `i:${idea.itemId}` : idea.placeId ? `p:${idea.placeId}` : '';
+    return option('', 'Hela besöket', cur === '') + places.map((p) =>
+      option(`p:${p.id}`, p.name, cur === `p:${p.id}`) + items.filter((it) => it.placeId === p.id).map((it) =>
+        option(`i:${it.id}`, `   ${p.name} › ${itemLabel(it)}`, cur === `i:${it.id}`)).join('')).join('');
+  };
+  return `<div class="idea-list">${ideas.map((x) => `
+    <div class="idea" data-idea="${x.id}">
+      <div class="idea-ico">${I.idea}</div>
+      <div class="idea-body">
+        <textarea class="input" rows="2" placeholder="Skriv vad ni pratade om …">${esc(x.text)}</textarea>
+        <div class="idea-foot">
+          <label class="idea-link"><span>Gäller</span><select class="input">${options(x)}</select></label>
+          <button class="btn danger icon-only" data-del-idea aria-label="Ta bort idé">${I.trash}</button>
+        </div>
+      </div>
+    </div>`).join('')}</div>`;
+}
+
+function bindIdeas(root, ideas, items) {
+  root.querySelectorAll('[data-idea]').forEach((el) => {
+    const idea = ideas.find((x) => x.id === el.dataset.idea);
+    const ta = el.querySelector('textarea');
+    ta.oninput = () => { idea.text = ta.value; saveSoon('ideas', idea); };
+    el.querySelector('select').onchange = async (e) => {
+      const [kind, id] = e.target.value.split(':');
+      idea.itemId = kind === 'i' ? id : null;
+      idea.placeId = kind === 'p' ? id : kind === 'i' ? items.find((it) => it.id === id)?.placeId : null;
+      await saveNow('ideas', idea);
+      refresh();
+    };
+    el.querySelector('[data-del-idea]').onclick = async () => {
+      if (idea.text?.trim() && !confirm('Ta bort idén?')) return;
+      pending.delete(idea.id);
+      await db.del('ideas', idea.id);
+      refresh();
+    };
+  });
+  if (focusIdea) {
+    const ta = root.querySelector(`[data-idea="${focusIdea}"] textarea`);
+    focusIdea = null;
+    if (ta) { ta.scrollIntoView({ block: 'center' }); ta.focus(); }
+  }
+}
+
+async function newIdea(link) {
+  const idea = await db.put('ideas', { id: db.uid(), text: '', placeId: null, itemId: null, ...link });
+  focusIdea = idea.id;
+  refresh();
 }
 
 // ---------- Toppfält ----------
@@ -173,7 +159,7 @@ function setTop({ back, title, sub, brand }) {
   topbar.innerHTML = `
     ${back ? `<button class="iconbtn" data-back aria-label="Tillbaka">${I.back}</button>` : ''}
     <div class="title">
-      ${brand ? `<div class="brand">Ragn-Sells · Kundrunda</div>` : ''}
+      ${brand ? '<div class="brand">Ragn-Sells · Kundrunda</div>' : ''}
       <h1>${esc(title)}</h1>
       ${sub ? `<div class="sub">${esc(sub)}</div>` : ''}
     </div>
@@ -182,13 +168,15 @@ function setTop({ back, title, sub, brand }) {
 }
 const setTitle = (t) => { const h = topbar.querySelector('h1'); if (h) h.textContent = t; };
 
+const sectionHead = (title, extra = '') => `<div class="section-head"><h2>${title}</h2>${extra}</div>`;
+
 // =====================================================================
 // Startsida: lista över besök
 // =====================================================================
 async function homeView() {
   const [visits, places, items] = await Promise.all([db.all('visits'), db.all('places'), db.all('items')]);
   visits.sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.createdAt - a.createdAt);
-  const count = (rows, id) => rows.filter((r) => r.visitId === id).length;
+  const placeCount = (id) => places.filter((r) => r.visitId === id).length;
   const containers = (id) => items.filter((i) => i.visitId === id).reduce((s, i) => s + (Number(i.count) || 1), 0);
 
   setTop({ brand: true, title: 'Mina besök' });
@@ -197,7 +185,7 @@ async function homeView() {
     <div class="section">
       ${visits.length ? `<div class="visit-list">${visits.map((v) => {
         const [, m, d] = (v.date || '').split('-').map(Number);
-        const meta = [v.address, plural(count(places, v.id), 'plats', 'platser'), plural(containers(v.id), 'kärl', 'kärl')]
+        const meta = [v.address, plural(placeCount(v.id), 'plats', 'platser'), plural(containers(v.id), 'kärl', 'kärl')]
           .filter(Boolean).join(' · ');
         return `<button class="visit" data-id="${v.id}">
           <div class="date"><b>${d || '–'}</b><small>${m ? MONTHS[m - 1] : ''}</small></div>
@@ -216,15 +204,12 @@ async function homeView() {
 }
 
 // =====================================================================
-// Ett besök: kunduppgifter, platser, anteckningar
+// Ett besök: kunduppgifter, platser, idéer, anteckningar
 // =====================================================================
 async function visitView(id) {
-  const visit = await db.get('visits', id);
-  if (!visit) return go('#/');
-  const [places, items, photos] = await Promise.all([
-    db.by('places', 'visitId', id), db.by('items', 'visitId', id), db.by('photos', 'visitId', id),
-  ]);
-  places.sort((a, b) => a.createdAt - b.createdAt);
+  const d = await db.loadVisit(id);
+  if (!d) return go('#/');
+  const { visit, places, items, photos, ideas } = d;
   const isNew = !visit.customer;
 
   const placeCard = (p) => {
@@ -254,8 +239,13 @@ async function visitView(id) {
       </div>
     </div>
 
+    <div class="btn-row" style="margin-top:16px">
+      <button class="btn big" id="present">${I.present} Visa för kunden</button>
+      <button class="btn big ghost" id="exportJson">${I.share} Exportera besöket</button>
+    </div>
+
     <div class="section">
-      <div class="section-head"><h2>Platser</h2></div>
+      ${sectionHead('Platser')}
       ${places.length ? `<div class="place-grid">${places.map(placeCard).join('')}</div><div class="spacer"></div>` : ''}
       <div class="card add-place">
         <h3>Lägg till plats</h3>
@@ -269,8 +259,15 @@ async function visitView(id) {
     </div>
 
     <div class="section">
-      <div class="section-head"><h2>Anteckningar om besöket</h2></div>
+      ${sectionHead('Idéer att förbättra')}
+      ${ideasHtml(ideas, places, items)}
+      <button class="btn ghost block add-idea" id="addIdea">${I.plus} Ny idé</button>
+    </div>
+
+    <div class="section">
+      ${sectionHead('Anteckningar om besöket')}
       <textarea class="input" data-field="notes" placeholder="Allmänt om kunden, vad ni pratade om …">${esc(visit.notes)}</textarea>
+      <p class="hint">Anteckningarna är dina egna. De visas inte för kunden om du inte slår på det i visningsläget.</p>
     </div>
 
     <div class="danger-zone">
@@ -281,6 +278,7 @@ async function visitView(id) {
     setTitle(visit.customer || 'Nytt besök');
     topbar.querySelector('.sub').textContent = prettyDate(visit.date);
   });
+  bindIdeas(main, ideas, items);
   if (isNew) setTimeout(() => main.querySelector('[data-field="customer"]').focus(), 300);
 
   const addPlace = async (name) => {
@@ -293,9 +291,17 @@ async function visitView(id) {
   main.querySelector('#placeName').onkeydown = (e) => { if (e.key === 'Enter') addPlace(e.target.value); };
   main.querySelectorAll('[data-suggest]').forEach((c) => { c.onclick = () => addPlace(c.dataset.suggest); });
   main.querySelectorAll('.place').forEach((b) => { b.onclick = () => go(`#/plats/${b.dataset.id}`); });
+  main.querySelector('#addIdea').onclick = () => newIdea({ visitId: id });
+  main.querySelector('#present').onclick = () => go(`#/visa/${id}`);
+  main.querySelector('#exportJson').onclick = async () => {
+    await flushSaves();
+    const t = toast('Förbereder fil …', 0);
+    try { await exportVisitJson(id); } catch (e) { console.error(e); toast('Exporten misslyckades'); return; }
+    t.remove();
+  };
 
   main.querySelector('#delVisit').onclick = async () => {
-    if (!confirm(`Ta bort besöket hos ${visit.customer || 'kunden'} med alla platser, kärl och bilder? Det går inte att ångra.`)) return;
+    if (!confirm(`Ta bort besöket hos ${visit.customer || 'kunden'} med alla platser, kärl, idéer och bilder? Det går inte att ångra.`)) return;
     await db.deleteVisit(id);
     toast('Besöket är borttaget');
     go('#/');
@@ -303,36 +309,37 @@ async function visitView(id) {
 }
 
 // =====================================================================
-// En plats: kärl, bilder, anteckning
+// En plats: kärl, bilder, idéer, anteckning
 // =====================================================================
 async function placeView(id) {
   const place = await db.get('places', id);
   if (!place) return go('#/');
-  const [items, photos] = await Promise.all([db.by('items', 'placeId', id), db.by('photos', 'placeId', id)]);
-  items.sort((a, b) => a.createdAt - b.createdAt);
-  const placePhotos = photos.filter((p) => !p.itemId).sort((a, b) => a.createdAt - b.createdAt);
-  const visit = await db.get('visits', place.visitId);
+  const d = await db.loadVisit(place.visitId);
+  const items = d.items.filter((it) => it.placeId === id);
+  const photos = d.photos.filter((p) => p.placeId === id);
+  const placePhotos = photos.filter((p) => !p.itemId);
+  const ideas = d.ideas.filter((x) => x.placeId === id);
 
   const itemRow = (it) => {
     const t = typeOf(it.type);
-    const ph = photos.filter((p) => p.itemId === it.id).sort((a, b) => a.createdAt - b.createdAt)[0];
+    const ph = photos.find((p) => p.itemId === it.id);
     const fill = FILLS.find((f) => f.key === it.fill);
-    const meta = [it.material, fill?.label, it.frequency].filter(Boolean).join(' · ');
+    const meta = [contentText(it), fill?.label, it.frequency].filter(Boolean).join(' · ');
     return `<button class="item ${it.type ? '' : 'todo'}" data-id="${it.id}">
       <div class="ico">${ph ? `<img src="${photoUrl(ph)}" alt="">` : t.icon}</div>
       <div class="txt">
-        <strong>${esc(t.label)}</strong>
+        <strong>${esc(itemLabel(it))}</strong>
         <div class="meta">${esc(meta || (it.type ? 'Inga detaljer än' : 'Tryck för att fylla i'))}</div>
-        ${it.flags?.length ? `<div class="tags">${it.flags.map((f) =>
+        ${it.flags.length ? `<div class="tags">${it.flags.map((f) =>
           `<span class="tag ${RISK_FLAGS.includes(f) ? 'risk' : ''}">${esc(f)}</span>`).join('')}</div>` : ''}
       </div>
       <div class="count">${Number(it.count) || 1} st</div>
     </button>`;
   };
 
-  setTop({ back: `#/besok/${place.visitId}`, title: place.name, sub: visit?.customer });
+  setTop({ back: `#/besok/${place.visitId}`, title: place.name, sub: d.visit.customer });
   main.innerHTML = `
-    <div class="section-head"><h2>Lägg till kärl</h2></div>
+    ${sectionHead('Lägg till kärl')}
     <div class="type-grid">
       <button class="type photo-first" id="photoFirst">${I.camera}<span>Foto först</span></button>
       ${TYPES.map((t) => `<button class="type" data-type="${t.key}">${t.icon}<span>${t.label}</span></button>`).join('')}
@@ -343,18 +350,24 @@ async function placeView(id) {
     </div>
 
     <div class="section">
-      <div class="section-head"><h2>Kärl här</h2></div>
+      ${sectionHead('Kärl här')}
       ${items.length ? `<div class="item-list">${items.map(itemRow).join('')}</div>`
-        : `<div class="empty"><p>Inga kärl på den här platsen än.</p></div>`}
+        : '<div class="empty"><p>Inga kärl på den här platsen än.</p></div>'}
     </div>
 
     <div class="section">
-      <div class="section-head"><h2>Bilder på platsen</h2></div>
+      ${sectionHead('Bilder på platsen')}
       ${photosHtml(placePhotos, 'Bild på platsen')}
     </div>
 
     <div class="section">
-      <div class="section-head"><h2>Anteckning om platsen</h2></div>
+      ${sectionHead('Idéer för platsen')}
+      ${ideasHtml(ideas, d.places, d.items)}
+      <button class="btn ghost block add-idea" id="addIdea">${I.plus} Ny idé om ${esc(place.name)}</button>
+    </div>
+
+    <div class="section">
+      ${sectionHead('Anteckning om platsen')}
       <textarea class="input" data-field="notes" placeholder="T.ex. trångt vid porten, kärlen står utomhus …">${esc(place.notes)}</textarea>
     </div>
 
@@ -367,11 +380,13 @@ async function placeView(id) {
     </div>`;
 
   bindFields(main, place, 'places', () => setTitle(place.name || 'Plats'));
-  bindPhotos(main, placePhotos, { visitId: place.visitId, placeId: id, itemId: null }, refresh);
+  bindPhotos(main, placePhotos, { visitId: place.visitId, placeId: id, itemId: null });
+  bindIdeas(main, ideas, d.items);
 
   const newItem = (type) => db.put('items', {
-    id: db.uid(), visitId: place.visitId, placeId: id, type, count: 1,
-    material: '', fill: '', frequency: '', supplier: '', flags: [], notes: '',
+    id: db.uid(), visitId: place.visitId, placeId: id, type, size: '', count: 1,
+    material: typeOf(type).collects ? 'Farligt avfall' : '', contents: [], contentsNote: '',
+    fill: '', frequency: '', supplier: '', flags: [], notes: '',
   });
   main.querySelectorAll('[data-type]').forEach((b) => {
     b.onclick = async () => { const it = await newItem(b.dataset.type); go(`#/karl/${it.id}`); };
@@ -386,27 +401,28 @@ async function placeView(id) {
   main.querySelector('#photoFirst').onclick = () => photoFirst(false);
   main.querySelector('#photoFirstLib').onclick = () => photoFirst(true);
   main.querySelectorAll('.item').forEach((b) => { b.onclick = () => go(`#/karl/${b.dataset.id}`); });
+  main.querySelector('#addIdea').onclick = () => newIdea({ visitId: place.visitId, placeId: id });
 
   main.querySelector('#delPlace').onclick = async () => {
-    if (!confirm(`Ta bort platsen "${place.name}" med alla kärl och bilder? Det går inte att ångra.`)) return;
+    if (!confirm(`Ta bort platsen "${place.name}" med alla kärl och bilder? Idéerna finns kvar under besöket. Det går inte att ångra.`)) return;
     await db.deletePlace(id);
     go(`#/besok/${place.visitId}`);
   };
 }
 
 // =====================================================================
-// Ett kärl: typ, antal, material, fyllnad, flaggor, bilder, anteckning
+// Ett kärl: typ, storlek, antal, innehåll, fyllnad, flaggor, bilder, idéer, anteckning
 // =====================================================================
 function choiceGroup(field, options, value, placeholder) {
   const custom = value && !options.includes(value) ? value : '';
   return `<div class="choice" data-field="${field}">
-    <div class="chips">${options.map((o) =>
-      `<button class="chip ${o === value ? 'on' : ''}" data-val="${esc(o)}">${esc(o)}</button>`).join('')}</div>
+    ${options.length ? `<div class="chips">${options.map((o) =>
+      `<button class="chip ${o === value ? 'on' : ''}" data-val="${esc(o)}">${esc(o)}</button>`).join('')}</div>` : ''}
     <input class="input" style="margin-top:10px" placeholder="${esc(placeholder)}" value="${esc(custom)}" autocomplete="off">
   </div>`;
 }
 
-function bindChoices(root, obj, store, onChange) {
+function bindChoices(root, obj, store) {
   root.querySelectorAll('.choice').forEach((g) => {
     const f = g.dataset.field;
     const input = g.querySelector('input');
@@ -417,14 +433,14 @@ function bindChoices(root, obj, store, onChange) {
         chips.forEach((x) => x.classList.toggle('on', x.dataset.val === obj[f]));
         input.value = '';
         saveNow(store, obj);
-        onChange?.();
+        if (f === 'size') setTitle(itemLabel(obj));
       };
     });
     input.oninput = () => {
       obj[f] = input.value.trim();
       chips.forEach((x) => x.classList.toggle('on', x.dataset.val === obj[f]));
       saveSoon(store, obj);
-      onChange?.();
+      if (f === 'size') setTitle(itemLabel(obj));
     };
   });
 }
@@ -432,23 +448,38 @@ function bindChoices(root, obj, store, onChange) {
 async function itemView(id) {
   const item = await db.get('items', id);
   if (!item) return go('#/');
-  item.flags ||= [];
-  const place = await db.get('places', item.placeId);
-  const photos = (await db.by('photos', 'itemId', id)).sort((a, b) => a.createdAt - b.createdAt);
+  const d = await db.loadVisit(item.visitId);
+  const place = d.places.find((p) => p.id === item.placeId);
+  const photos = d.photos.filter((p) => p.itemId === id);
+  const ideas = d.ideas.filter((x) => x.itemId === id);
+  const t = typeOf(item.type);
 
-  setTop({ back: `#/plats/${item.placeId}`, title: typeOf(item.type).label, sub: place?.name });
+  // Miljöskåp: flera sorters farligt avfall. Övriga: ett material.
+  const contentSection = t.collects ? `
+    ${sectionHead('Vad samlas här?', '<span class="muted">Välj flera</span>')}
+    <div class="chips">${HAZARDOUS.map((h) =>
+      `<button class="chip ${item.contents.includes(h) ? 'on' : ''}" data-content="${esc(h)}">${esc(h)}</button>`).join('')}</div>
+    <input class="input" style="margin-top:10px" data-field="contentsNote" value="${esc(item.contentsNote)}" placeholder="Annat – skriv här" autocomplete="off">`
+    : `${sectionHead('Vad ligger i?')}${choiceGroup('material', MATERIALS, item.material, 'Annat – skriv här')}`;
+
+  setTop({ back: `#/plats/${item.placeId}`, title: itemLabel(item), sub: place?.name });
   main.innerHTML = `
-    <div class="section-head"><h2>Bilder</h2></div>
+    ${sectionHead('Bilder')}
     ${photosHtml(photos)}
 
     <div class="section">
-      <div class="section-head"><h2>Typ</h2></div>
-      <div class="type-grid">${TYPES.map((t) =>
-        `<button class="type ${t.key === item.type ? 'on' : ''}" data-type="${t.key}">${t.icon}<span>${t.label}</span></button>`).join('')}</div>
+      ${sectionHead('Typ')}
+      <div class="type-grid">${TYPES.map((x) =>
+        `<button class="type ${x.key === item.type ? 'on' : ''}" data-type="${x.key}">${x.icon}<span>${x.label}</span></button>`).join('')}</div>
     </div>
 
+    ${item.type ? `<div class="section">
+      ${sectionHead(t.sizeLabel)}
+      ${choiceGroup('size', t.sizes, item.size, t.sizes.length ? `Annan ${t.sizeLabel.toLowerCase()} – skriv här` : `Skriv ${t.sizeLabel.toLowerCase()}`)}
+    </div>` : ''}
+
     <div class="section">
-      <div class="section-head"><h2>Antal</h2></div>
+      ${sectionHead('Antal')}
       <div class="stepper">
         <button id="minus" aria-label="Ett färre">${I.minus}</button>
         <output id="count">${Number(item.count) || 1}</output>
@@ -456,13 +487,10 @@ async function itemView(id) {
       </div>
     </div>
 
-    <div class="section">
-      <div class="section-head"><h2>Vad ligger i?</h2></div>
-      ${choiceGroup('material', MATERIALS, item.material, 'Annat – skriv här')}
-    </div>
+    <div class="section">${contentSection}</div>
 
     <div class="section">
-      <div class="section-head"><h2>Hur fullt?</h2></div>
+      ${sectionHead('Hur fullt?')}
       <div class="fill-grid">${FILLS.map((f) => `
         <button class="fill ${f.over ? 'over' : ''} ${f.key === item.fill ? 'on' : ''}" data-fill="${f.key}">
           <span class="lvl"><i style="height:${f.over ? 118 : f.pct}%"></i></span>${f.label}
@@ -470,23 +498,29 @@ async function itemView(id) {
     </div>
 
     <div class="section">
-      <div class="section-head"><h2>Snabbflaggor</h2></div>
+      ${sectionHead('Snabbflaggor')}
       <div class="chips">${FLAGS.map((f) =>
         `<button class="chip flag ${RISK_FLAGS.includes(f) ? 'risk' : ''} ${item.flags.includes(f) ? 'on' : ''}" data-flag="${esc(f)}">${esc(f)}</button>`).join('')}</div>
     </div>
 
     <div class="section">
-      <div class="section-head"><h2>Tömning idag <span class="muted" style="font-size:18px">(valfritt)</span></h2></div>
+      ${sectionHead('Tömning idag <span class="muted" style="font-size:18px">(valfritt)</span>')}
       ${choiceGroup('frequency', FREQS, item.frequency, 'Annat – t.ex. 2 gånger/vecka')}
     </div>
 
     <div class="section">
-      <div class="section-head"><h2>Leverantör idag <span class="muted" style="font-size:18px">(valfritt)</span></h2></div>
+      ${sectionHead('Leverantör idag <span class="muted" style="font-size:18px">(valfritt)</span>')}
       ${choiceGroup('supplier', SUPPLIERS, item.supplier, 'Skriv namn på leverantör')}
     </div>
 
     <div class="section">
-      <div class="section-head"><h2>Anteckning</h2></div>
+      ${sectionHead('Idéer om kärlet')}
+      ${ideasHtml(ideas, d.places, d.items)}
+      <button class="btn ghost block add-idea" id="addIdea">${I.plus} Ny idé om det här kärlet</button>
+    </div>
+
+    <div class="section">
+      ${sectionHead('Anteckning')}
       <textarea class="input" data-field="notes" placeholder="Det du vill komma ihåg om just det här kärlet …">${esc(item.notes)}</textarea>
     </div>
 
@@ -500,13 +534,26 @@ async function itemView(id) {
 
   bindFields(main, item, 'items');
   bindChoices(main, item, 'items');
-  bindPhotos(main, photos, { visitId: item.visitId, placeId: item.placeId, itemId: id }, refresh);
+  bindPhotos(main, photos, { visitId: item.visitId, placeId: item.placeId, itemId: id });
+  bindIdeas(main, ideas, d.items);
 
+  // Byte av typ visar nya storleksval, så sidan ritas om.
   main.querySelectorAll('[data-type]').forEach((b) => {
-    b.onclick = () => {
+    b.onclick = async () => {
+      if (item.type === b.dataset.type) return;
       item.type = b.dataset.type;
-      main.querySelectorAll('[data-type]').forEach((x) => x.classList.toggle('on', x === b));
-      setTitle(typeOf(item.type).label);
+      item.size = '';
+      if (typeOf(item.type).collects && !item.material) item.material = 'Farligt avfall';
+      await saveNow('items', item);
+      refresh();
+    };
+  });
+
+  main.querySelectorAll('[data-content]').forEach((b) => {
+    b.onclick = () => {
+      const c = b.dataset.content;
+      item.contents = item.contents.includes(c) ? item.contents.filter((x) => x !== c) : [...item.contents, c];
+      b.classList.toggle('on', item.contents.includes(c));
       saveNow('items', item);
     };
   });
@@ -533,9 +580,10 @@ async function itemView(id) {
     };
   });
 
+  main.querySelector('#addIdea').onclick = () => newIdea({ visitId: item.visitId, placeId: item.placeId, itemId: id });
   main.querySelector('#done').onclick = () => go(`#/plats/${item.placeId}`);
   main.querySelector('#delItem').onclick = async () => {
-    if (!confirm('Ta bort kärlet och dess bilder?')) return;
+    if (!confirm('Ta bort kärlet och dess bilder? Idéer om kärlet finns kvar under platsen.')) return;
     await db.deleteItem(id);
     go(`#/plats/${item.placeId}`);
   };
@@ -548,6 +596,7 @@ const ROUTES = [
   [/^#\/besok\/([^/]+)$/, visitView],
   [/^#\/plats\/([^/]+)$/, placeView],
   [/^#\/karl\/([^/]+)$/, itemView],
+  [/^#\/visa\/([^/]+)$/, (id) => presentView(id, { topbar, main })],
   [/.*/, homeView],
 ];
 const scrollMemory = {};
@@ -558,6 +607,7 @@ async function render({ animate }) {
   const hash = location.hash || '#/';
   const y = window.scrollY;
   revokeUrls();
+  if (!hash.startsWith('#/visa/')) leavePresent();
   for (const [re, view] of ROUTES) {
     const m = hash.match(re);
     if (m) { await view(m[1]); break; }
