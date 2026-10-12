@@ -1,7 +1,7 @@
 // Export av ett besök som JSON-fil (för offertverktyget senare, och som säkerhetskopia).
 // Inget skickas automatiskt – filen delas bara via iPadens dela-meny när du själv väljer det.
 import * as db from './db.js';
-import { itemLabel, contentText, costText, typeOf, FILLS } from './data.js';
+import { itemLabel, contentText, costText, typeOf, FILLS, ideaSummary, ideaHasContent } from './data.js';
 
 const blobToDataUrl = (blob) => new Promise((resolve, reject) => {
   const r = new FileReader();
@@ -40,7 +40,11 @@ export async function buildJson(visitId) {
       fillLabel: FILLS.find((f) => f.key === it.fill)?.label || '',
       costText: costText(it),
     })),
-    ideas: d.ideas.map(strip),
+    ideas: d.ideas.filter(ideaHasContent).map((x) => ({
+      ...strip(x),
+      label: x.type ? itemLabel(x) : '',
+      summary: ideaSummary(x, d.items),
+    })),
     photos,
   };
 }

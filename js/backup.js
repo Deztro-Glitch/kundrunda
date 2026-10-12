@@ -32,7 +32,7 @@ async function restoreVisit(v) {
   await db.put('visits', v.visit);
   for (const p of v.places || []) await db.put('places', p);
   for (const it of v.items || []) await db.put('items', cleanItem(it));
-  for (const x of v.ideas || []) await db.put('ideas', x);
+  for (const { label, summary, ...x } of v.ideas || []) await db.put('ideas', x);
   for (const ph of v.photos || []) {
     const blob = await (await fetch(ph.dataUrl)).blob();
     const { dataUrl, ...rest } = ph;

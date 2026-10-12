@@ -1,0 +1,139 @@
+/* =====================================================================
+   Steg: 1 Kund → 2 Nuläge → 3 Förbättringar → 4 Visa & skicka
+   Varje steg har sin färg, så man ser direkt var man är.
+   ===================================================================== */
+:root { --improve: #1A6B8A; --improve-dark: #124E66; --improve-tint: #E4F0F5; --improve-tint-2: #C5DFEA; }
+
+/* Steg 3 – Förbättringar: hela sidan går över i petroleumblått */
+body[data-step="forbattringar"] {
+  --green: var(--improve); --green-dark: var(--improve-dark);
+  --green-tint: var(--improve-tint); --green-tint-2: var(--improve-tint-2);
+  background: #F2F7F9;
+}
+/* Steg 4 – Visa & skicka: mörkt toppfält */
+body[data-step="klart"] .topbar { background: #1F2B25; }
+
+/* ---------- Toppfält med stegrad ---------- */
+.topbar { display: block; padding: calc(env(safe-area-inset-top) + 8px) 16px 0; min-height: 0; transition: background .3s; }
+.tb-row { display: flex; align-items: center; gap: 12px; min-height: 64px; padding-bottom: 8px; }
+.steps {
+  display: flex; gap: 6px; padding: 4px 0 12px; margin: 0 -16px; padding-left: 16px; padding-right: 16px;
+  overflow-x: auto; scrollbar-width: none;
+}
+.steps::-webkit-scrollbar { display: none; }
+.step {
+  flex: 1 0 auto; min-height: 48px; border: 0; border-radius: 99px; padding: 0 16px 0 6px;
+  background: rgba(255, 255, 255, .12); color: rgba(255, 255, 255, .85);
+  display: inline-flex; align-items: center; gap: 10px; font-weight: 600; font-size: 16px; white-space: nowrap;
+  transition: background .2s, color .2s;
+}
+.step .n {
+  width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; flex: none;
+  background: rgba(255, 255, 255, .18); font-family: var(--head); font-weight: 700; font-size: 18px;
+}
+.step .n svg { width: 20px; height: 20px; }
+.step.done .n { background: rgba(255, 255, 255, .9); color: var(--green-dark); }
+.step.on { background: #fff; color: var(--green-dark); }
+.step.on .n { background: var(--green-dark); color: #fff; }
+.step:active { transform: scale(.97); }
+@media (max-width: 700px) { .step .l { font-size: 15px; } .step { padding-right: 12px; } }
+
+.step-intro {
+  background: var(--green-tint); color: var(--green-dark); border-radius: var(--radius);
+  padding: 14px 18px; margin-bottom: 18px; font-size: 17px;
+}
+
+/* Nästa-knappen längst ner */
+.bottombar .btn.next { justify-content: center; }
+.bottombar .btn.next svg { width: 28px; height: 28px; }
+
+.flag-count { color: var(--danger); font-weight: 600; }
+
+/* ---------- Förbättringar under rundan (på plats och kärl) ---------- */
+.btn.improve { background: var(--improve); border-color: var(--improve); color: #fff; }
+.btn.improve:active { background: var(--improve-dark); }
+.improve-zone { background: var(--improve-tint); border-radius: var(--radius); padding: 18px; }
+.improve-zone .section-head h2 { color: var(--improve-dark); display: flex; align-items: center; gap: 8px; }
+.improve-zone .section-head h2 svg { width: 24px; height: 24px; }
+.improve-zone .idea-cards { margin-bottom: 12px; }
+
+/* ---------- Förbättringskort ---------- */
+.idea-cards { display: grid; gap: 10px; }
+.idea-card {
+  width: 100%; border: 0; text-align: left; background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 14px; display: flex; align-items: center; gap: 14px; border-left: 6px solid var(--improve);
+  transition: transform .12s var(--ease);
+}
+.idea-card:active { transform: scale(.99); }
+.idea-card .ic { width: 56px; height: 56px; flex: none; border-radius: 12px; background: var(--improve-tint); color: var(--improve-dark); display: grid; place-items: center; }
+.idea-card .ic svg { width: 36px; height: 36px; }
+.idea-card .it { flex: 1; min-width: 0; display: grid; gap: 4px; }
+.idea-card strong { font-size: 19px; font-weight: 600; }
+.idea-card strong:empty { display: none; }
+.idea-card small { color: var(--muted); font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.idea-card .chev { width: 26px; height: 26px; color: var(--muted); flex: none; }
+.act { justify-self: start; font-size: 15px; font-weight: 600; padding: 4px 12px; border-radius: 99px; background: var(--improve-tint); color: var(--improve-dark); }
+.act-tabort { background: var(--danger-tint); color: var(--danger); }
+.group-head { color: var(--green-dark); margin: 22px 0 10px; font-size: 20px; }
+.group-head:first-child { margin-top: 0; }
+
+/* Det här såg ni under rundan */
+.seen-list { display: grid; gap: 10px; }
+.seen { display: flex; align-items: center; gap: 14px; background: var(--surface); border-radius: var(--radius); padding: 12px 14px; box-shadow: var(--shadow); }
+.seen-ico { width: 52px; height: 52px; flex: none; border-radius: 12px; background: #F1F4F2; color: var(--ink); display: grid; place-items: center; }
+.seen-ico svg { width: 36px; height: 36px; }
+.seen-txt { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.seen-txt strong { font-size: 18px; }
+.seen-txt small { color: var(--muted); }
+.seen .btn { flex: none; }
+
+/* ---------- En förbättring ---------- */
+textarea.input.big-text { min-height: 110px; font-size: 21px; }
+.action-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+@media (max-width: 700px) { .action-grid { grid-template-columns: repeat(2, 1fr); } }
+.action {
+  min-height: 64px; border: 2px solid var(--line); background: #fff; border-radius: var(--radius); font-weight: 600; font-size: 17px;
+  transition: transform .12s var(--ease), background .15s, border-color .15s;
+}
+.action:active { transform: scale(.97); }
+.action.on { border-color: var(--green); background: var(--green-tint); box-shadow: inset 0 0 0 2px var(--green); color: var(--green-dark); }
+.warn-text { color: var(--danger); font-weight: 500; margin: 12px 0 0; }
+.target-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+.target {
+  display: flex; align-items: center; gap: 12px; text-align: left; border: 2px solid var(--line); background: #fff;
+  border-radius: var(--radius); padding: 10px 12px; min-height: 64px;
+}
+.target .ti { width: 44px; height: 44px; flex: none; color: var(--ink); display: grid; place-items: center; }
+.target .ti svg { width: 38px; height: 38px; }
+.target b { display: block; font-size: 17px; }
+.target small { color: var(--muted); font-size: 14px; }
+.target.on { border-color: var(--green); background: var(--green-tint); box-shadow: inset 0 0 0 2px var(--green); }
+.proposal { border-top: 2px dashed var(--green-tint-2); padding-top: 22px; }
+
+/* ---------- Steg 4: Visa & skicka ---------- */
+.check-list { display: grid; gap: 8px; margin-bottom: 24px; }
+.check {
+  display: flex; align-items: center; gap: 12px; text-align: left; width: 100%;
+  background: var(--surface); border: 0; border-radius: var(--radius-sm); padding: 12px 14px; font-size: 18px; box-shadow: var(--shadow);
+}
+.check .ci { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; flex: none; font-weight: 700; }
+.check .ci svg { width: 20px; height: 20px; }
+.check.ok .ci { background: var(--green-tint); color: var(--green-dark); }
+.check.todo .ci { background: var(--danger-tint); color: var(--danger); }
+.check .chev { margin-left: auto; width: 24px; height: 24px; color: var(--muted); }
+.final-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.final {
+  border: 0; text-align: left; background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 22px; display: grid; gap: 8px; align-content: start; min-height: 170px;
+  transition: transform .12s var(--ease);
+}
+.final:active { transform: scale(.98); }
+.final svg { width: 40px; height: 40px; color: var(--green); }
+.final b { font-family: var(--head); text-transform: uppercase; font-size: 26px; letter-spacing: .02em; color: var(--ink); }
+.final span { color: var(--muted); font-size: 16px; }
+.final:first-child { background: var(--green); }
+.final:first-child svg, .final:first-child b, .final:first-child span { color: #fff; }
+
+/* ---------- Förslag i visningsläget ---------- */
+.imp-sum { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-weight: 600; font-size: 18px; color: var(--green-dark); }
+.imp-sum svg { width: 36px; height: 36px; flex: none; }

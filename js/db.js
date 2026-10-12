@@ -1,6 +1,6 @@
 // Enkel lagring i iPadens IndexedDB. Inget skickas någonstans.
 // Tabeller: visits (besök), places (platser), items (kärl), photos (bilder som Blob), ideas (idéer).
-import { normalizeItem } from './data.js';
+import { normalizeItem, normalizeIdea } from './data.js';
 
 const DB_NAME = 'kundrunda';
 const DB_VERSION = 2;
@@ -60,14 +60,15 @@ function unpackPhoto(p) {
   return p;
 }
 
-const fix = (name, rows) => (name === 'items' ? rows.map(normalizeItem) : name === 'photos' ? rows.map(unpackPhoto) : rows);
+const NORMALIZE = { items: normalizeItem, photos: unpackPhoto, ideas: normalizeIdea };
+const fix = (name, rows) => (NORMALIZE[name] ? rows.map(NORMALIZE[name]) : rows);
 
 export const uid = () =>
   (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
 
 export async function get(name, id) {
   const row = await wrap((await store(name)).get(id));
-  return name === 'items' ? normalizeItem(row) : name === 'photos' ? unpackPhoto(row) : row;
+  return NORMALIZE[name] ? NORMALIZE[name](row) : row;
 }
 
 export async function all(name) {

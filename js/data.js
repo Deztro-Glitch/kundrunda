@@ -93,3 +93,41 @@ export function costText(it) {
     c.other,
   ].filter(Boolean).join(' · ');
 }
+
+// ---------- Förbättringar ----------
+// En förbättring är en text och kan dessutom vara ett konkret förslag på kärl.
+export const ACTIONS = [
+  { key: 'ide', label: 'Bara en idé' },
+  { key: 'ny', label: 'Nytt kärl' },
+  { key: 'byt', label: 'Byt ut kärl' },
+  { key: 'tabort', label: 'Ta bort kärl' },
+];
+export const needsTarget = (a) => a === 'byt' || a === 'tabort';
+export const proposesContainer = (a) => a === 'ny' || a === 'byt';
+
+export function normalizeIdea(x) {
+  if (!x) return x;
+  x.text ||= '';
+  x.action ||= 'ide';
+  x.type ||= '';
+  x.size ||= '';
+  x.regId ||= '';
+  x.regLabel ||= '';
+  x.customName ||= '';
+  x.count = Number(x.count) || 1;
+  if (!Array.isArray(x.materials)) x.materials = [];
+  return x;
+}
+
+// "Nytt: 1 × Balpress – Wellpapp, löst" / "Byt Kärl 660 L mot …" / "Ta bort Kärl 370 L"
+export function ideaSummary(x, items = []) {
+  const target = items.find((i) => i.id === x.itemId);
+  const tl = target ? itemLabel(target) : 'kärl';
+  const what = x.type ? `${x.count} × ${itemLabel(x)}${x.materials.length ? ` – ${x.materials.join(', ')}` : ''}` : '';
+  if (x.action === 'ny') return what ? `Nytt: ${what}` : 'Nytt kärl';
+  if (x.action === 'byt') return `Byt ${tl}${what ? ` mot ${what}` : ''}`;
+  if (x.action === 'tabort') return `Ta bort ${tl}`;
+  return '';
+}
+export const ideaTitle = (x, items) => x.text.trim() || ideaSummary(x, items) || 'Ny förbättring';
+export const ideaHasContent = (x) => !!(x.text.trim() || x.action !== 'ide');

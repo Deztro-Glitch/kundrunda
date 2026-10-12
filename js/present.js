@@ -3,7 +3,8 @@
 //  • Förbättringar – fylls i tillsammans med kunden, direkt här.
 // Allt kan sparas som PDF.
 import * as db from './db.js';
-import { typeOf, itemLabel, contentText, costText, FILLS, RISK_FLAGS } from './data.js';
+import { typeOf, itemLabel, contentText, costText, FILLS, RISK_FLAGS, ideaHasContent, ideaSummary } from './data.js';
+import { topbar, main } from './ui.js';
 import { esc, prettyDate, photoUrl, revokeUrls, openViewer, go, toast } from './util.js';
 import { I } from './icons.js';
 
@@ -36,7 +37,7 @@ async function flushIdeas() {
   for (const { idea, t } of list) { clearTimeout(t); await db.put('ideas', idea); }
 }
 
-export async function presentView(visitId, { topbar, main, startAt = 0 }) {
+export async function presentView(visitId, { startAt = 0 } = {}) {
   leavePresent();
   await flushIdeas();
   revokeUrls();
@@ -45,7 +46,7 @@ export async function presentView(visitId, { topbar, main, startAt = 0 }) {
   const { visit, places, items, photos, ideas } = d;
   const placeName = (id) => places.find((p) => p.id === id)?.name || '';
   const total = items.reduce((s, it) => s + count(it), 0);
-  const realIdeas = ideas.filter((i) => i.text?.trim());
+  const realIdeas = ideas.filter(ideaHasContent);
 
   // ---------- Försättsblad ----------
   const coverPhoto = photos.find((p) => !p.itemId) || photos[0];
@@ -174,7 +175,8 @@ export async function presentView(visitId, { topbar, main, startAt = 0 }) {
       <h2 class="slide-title">Förbättringar</h2>
       ${realIdeas.length ? `<ol class="idea-big">${realIdeas.map((x) => `
         <li data-idea="${x.id}">
-          <textarea class="imp-edit no-print" rows="1">${esc(x.text)}</textarea>
+          <textarea class="imp-edit no-print" rows="1" placeholder="Skriv en kommentar …">${esc(x.text)}</textarea>
+          ${x.action !== 'ide' ? `<div class="imp-sum">${x.type ? typeOf(x.type).icon : ''}<span>${esc(ideaSummary(x, items))}</span></div>` : ''}
           <div class="print-only">${esc(x.text).replace(/\n/g, '<br>')}</div>
           <div class="imp-foot">
             <small class="print-only">${esc(ctxLabel(x))}</small>
@@ -248,10 +250,15 @@ export async function presentView(visitId, { topbar, main, startAt = 0 }) {
   dots.forEach((dd) => { dd.onclick = () => show(Number(dd.dataset.dot)); });
   main.querySelector('[data-tab="now"]').onclick = () => show(current >= improveIndex ? 0 : current);
   main.querySelector('[data-tab="improve"]').onclick = () => show(improveIndex);
-  main.querySelector('[data-close]').onclick = () => go(`#/besok/${visitId}`);
-  const rerender = () => presentView(visitId, { topbar, main, startAt: index() });
+  main.querySelector('[data-close]').onclick = () => go(`#/besok/${visitId}/klart`);
+  const rerender = () => presentView(visitId, { startAt: index() });
   main.querySelector('[data-notes]').onclick = () => { showNotes = !showNotes; rerender(); };
   main.querySelector('[data-pdf]').onclick = () => window.print();
+  // "Spara som PDF" i steg 4: öppna utskriften direkt.
+  if (sessionStorage.getItem('kundrunda.printOnOpen')) {
+    sessionStorage.removeItem('kundrunda.printOnOpen');
+    setTimeout(() => window.print(), 700);
+  }
   main.querySelectorAll('[data-photo]').forEach((b) => {
     b.onclick = () => openViewer(photos.find((p) => p.id === b.dataset.photo));
   });
