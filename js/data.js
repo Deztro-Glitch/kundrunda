@@ -33,6 +33,7 @@ export const typeOf = (key) => TYPES.find((t) => t.key === key) || UNKNOWN_TYPE;
 // "Kärl 370 L", "Miljöskåp FarligtEnkelt 2" … men för fat räcker sorten: "Spundfat".
 export const itemLabel = (it) => {
   if (it.regLabel) return it.regLabel; // valt ur offertverktygets register
+  if (it.type === 'annat' && it.customName) return [it.customName, it.size].filter(Boolean).join(' ');
   const t = typeOf(it.type);
   if (t.sizeLabel === 'Sort' && t.sizes.includes(it.size)) return it.size;
   return [t.label, it.size].filter(Boolean).join(' ');
@@ -68,6 +69,8 @@ export function normalizeItem(it) {
   it.size ||= '';
   it.regId ||= '';
   it.regLabel ||= '';
+  it.customName ||= '';
+  it.costs ||= {};
   if (!Array.isArray(it.materials)) {
     // Förr: ett material + (för miljöskåp) en lista + en fritext.
     const old = [...(it.contents || []), it.contentsNote, it.material]
@@ -77,4 +80,16 @@ export function normalizeItem(it) {
     delete it.material; delete it.contents; delete it.contentsNote;
   }
   return it;
+}
+
+// Vad kunden betalar idag (om kunden berättat). Fälten är valfria och skrivs som kunden sa dem.
+export const MATERIAL_UNITS = ['kr/kg', 'kr/ton', 'kr/st'];
+export function costText(it) {
+  const c = it.costs || {};
+  return [
+    c.rent && `Hyra ${c.rent} kr/mån`,
+    c.empty && `Tömning ${c.empty} kr/st`,
+    c.material && `Material ${c.material} ${c.materialUnit || 'kr/kg'}`,
+    c.other,
+  ].filter(Boolean).join(' · ');
 }

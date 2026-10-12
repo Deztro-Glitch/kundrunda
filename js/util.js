@@ -21,7 +21,16 @@ export const byCreated = (a, b) => a.createdAt - b.createdAt;
 
 // Bild-URL:er frigörs när man byter sida så minnet inte tar slut.
 let urls = [];
-export const photoUrl = (p) => { const u = URL.createObjectURL(p.blob); urls.push(u); return u; };
+// Visas i stället för en bild som inte går att läsa (hellre text än ett blått frågetecken).
+export const BROKEN_IMG = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120"><rect width="160" height="120" fill="#E6F2EA"/><text x="80" y="58" text-anchor="middle" font-family="sans-serif" font-size="11" fill="#005C29">Bilden kunde</text><text x="80" y="73" text-anchor="middle" font-family="sans-serif" font-size="11" fill="#005C29">inte läsas</text></svg>')}`;
+export const photoUrl = (p) => {
+  if (p.broken || !p.blob) return BROKEN_IMG;
+  const u = URL.createObjectURL(p.blob); urls.push(u); return u;
+};
+document.addEventListener('error', (e) => {
+  const t = e.target;
+  if (t && t.tagName === 'IMG' && t.src !== BROKEN_IMG) t.src = BROKEN_IMG;
+}, true);
 export const revokeUrls = () => { urls.forEach((u) => URL.revokeObjectURL(u)); urls = []; };
 
 let toastTimer;

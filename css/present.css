@@ -275,3 +275,20 @@ details.more h2 .muted { font-size: 18px; }
   .print-only { display: block !important; }
   .improve .idea-big li { padding-right: 22px; }
 }
+
+/* ---------- Annat: eget namn ---------- */
+.small-head { color: var(--green-dark); margin: 16px 0 8px; font-size: 18px; }
+.small-head .muted { font-size: 15px; }
+
+/* ---------- Vad kunden betalar idag ---------- */
+.cost-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.cost { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px;
+  background: #fff; border: 2px solid var(--line); border-radius: var(--radius-sm); padding: 6px 12px; }
+.cost:focus-within { border-color: var(--green); }
+.cost > span:first-child { font-weight: 600; color: var(--muted); font-size: 15px; text-transform: uppercase; letter-spacing: .04em; }
+.cost .input { border: 0; min-height: 44px; padding: 6px 4px; text-align: right; font-size: 20px; font-weight: 600; }
+.cost em { font-style: normal; color: var(--muted); font-weight: 500; }
+.unit-seg { grid-column: 1 / -1; display: flex; gap: 6px; padding-bottom: 4px; }
+.unit-seg button { flex: 1; min-height: 40px; border: 2px solid var(--line); background: #fff; border-radius: 99px; font-weight: 600; font-size: 15px; }
+.unit-seg button.on { background: var(--green); border-color: var(--green); color: #fff; }
+.item .cost-line { color: var(--green-dark); font-weight: 500; }

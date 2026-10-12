@@ -2,7 +2,7 @@ import * as db from './db.js';
 import { compress } from './image.js';
 import { I } from './icons.js';
 import {
-  TYPES, typeOf, itemLabel, contentText, FILLS, FREQS, SUPPLIERS, FLAGS, RISK_FLAGS, PLACE_SUGGESTIONS,
+  TYPES, typeOf, itemLabel, contentText, costText, MATERIAL_UNITS, FILLS, FREQS, SUPPLIERS, FLAGS, RISK_FLAGS, PLACE_SUGGESTIONS,
 } from './data.js';
 import { commonFor, groupsFor, allMaterialNames, fitsKind, customMaterials, rememberCustom } from './materials.js';
 import { getRegister, parseRegister, saveRegister, clearRegister, regContainersFor, regLabel } from './register.js';
@@ -451,6 +451,7 @@ async function placeView(id) {
       <div class="txt">
         <strong>${esc(itemLabel(it))}</strong>
         <div class="meta">${esc(meta || (it.type ? 'Inga detaljer än' : 'Tryck för att fylla i'))}</div>
+        ${costText(it) ? `<div class="meta cost-line">Betalar idag: ${esc(costText(it))}</div>` : ''}
         ${it.flags.length ? `<div class="tags">${it.flags.map((f) =>
           `<span class="tag ${RISK_FLAGS.includes(f) ? 'risk' : ''}">${esc(f)}</span>`).join('')}</div>` : ''}
       </div>
@@ -662,7 +663,7 @@ async function itemView(id) {
   const ideas = d.ideas.filter((x) => x.itemId === id);
   const t = typeOf(item.type);
   const regItems = regContainersFor(item.type);
-  const hasMore = item.frequency || item.supplier || item.notes;
+  const hasMore = item.frequency || item.supplier || item.notes || costText(item);
 
   setTop({ back: `#/plats/${item.placeId}`, title: itemLabel(item), sub: place?.name });
   main.innerHTML = `
@@ -679,6 +680,10 @@ async function itemView(id) {
       <div class="chips">${regItems.map((r) =>
         `<button class="chip ${item.regId === r.id ? 'on' : ''}" data-reg="${esc(r.id)}">${esc(regLabel(r))}</button>`).join('')}</div>
       <input class="input" style="margin-top:10px" id="ownSize" value="${esc(item.regId ? '' : item.size)}" placeholder="Annat – skriv här" autocomplete="off">`
+      : item.type === 'annat' ? `${sectionHead('Vad är det för behållare?')}
+      <input class="input" data-field="customName" id="customName" value="${esc(item.customName)}" placeholder="T.ex. pallbur, gipscontainer, tunna" autocomplete="off">
+      <h3 class="small-head">Storlek <span class="muted">(valfritt)</span></h3>
+      <input class="input" data-field="size" id="annatSize" value="${esc(item.size)}" placeholder="T.ex. 1 m³ eller 120 L" autocomplete="off">`
       : `${sectionHead(t.sizeLabel)}
       ${choiceGroup('size', t.sizes, item.size, t.sizes.length ? `Annan ${t.sizeLabel.toLowerCase()} – skriv här` : `Skriv ${t.sizeLabel.toLowerCase()}`)}`}
     </div>` : ''}
@@ -712,7 +717,7 @@ async function itemView(id) {
     </div>
 
     <details class="section more" ${hasMore ? 'open' : ''}>
-      <summary><h2>Mer <span class="muted">(valfritt)</span></h2><span class="muted">Tömning, leverantör, anteckning</span></summary>
+      <summary><h2>Mer <span class="muted">(valfritt)</span></h2><span class="muted">Tömning, leverantör, pris idag, anteckning</span></summary>
       <div class="sub-section">
         <h3>Tömning idag</h3>
         ${choiceGroup('frequency', FREQS, item.frequency, 'Annat – t.ex. 2 gånger/vecka')}
@@ -720,6 +725,17 @@ async function itemView(id) {
       <div class="sub-section">
         <h3>Leverantör idag</h3>
         ${choiceGroup('supplier', SUPPLIERS, item.supplier, 'Skriv namn på leverantör')}
+      </div>
+      <div class="sub-section">
+        <h3>Vad kunden betalar idag</h3>
+        <p class="hint" style="margin:-4px 0 10px">Om kunden berättar. Fyll bara i det du vet.</p>
+        <div class="cost-grid">
+          <label class="cost"><span>Hyra</span><input class="input" inputmode="decimal" data-cost="rent" value="${esc(item.costs.rent || '')}" placeholder="0"><em>kr/mån</em></label>
+          <label class="cost"><span>Tömning</span><input class="input" inputmode="decimal" data-cost="empty" value="${esc(item.costs.empty || '')}" placeholder="0"><em>kr/st</em></label>
+          <label class="cost"><span>Material</span><input class="input" inputmode="decimal" data-cost="material" value="${esc(item.costs.material || '')}" placeholder="0">
+            <span class="unit-seg">${MATERIAL_UNITS.map((u) => `<button type="button" class="${(item.costs.materialUnit || 'kr/kg') === u ? 'on' : ''}" data-unit="${u}">${u}</button>`).join('')}</span></label>
+        </div>
+        <input class="input" style="margin-top:10px" data-cost="other" value="${esc(item.costs.other || '')}" placeholder="Övrigt – t.ex. fast avgift 500 kr/år" autocomplete="off">
       </div>
       <div class="sub-section">
         <h3>Anteckning</h3>
@@ -744,6 +760,22 @@ async function itemView(id) {
   bindIdeas(main, ideas, d.items);
   bindTypeGrid(main);
   mountMaterialPicker(main.querySelector('#matBox'), item);
+
+  // "Annat": eget namn och storlek syns direkt i rubriken.
+  ['customName', 'annatSize'].forEach((idName) => main.querySelector(`#${idName}`)?.addEventListener('input', () => setTitle(itemLabel(item))));
+
+  // Vad kunden betalar idag
+  main.querySelectorAll('[data-cost]').forEach((el) => {
+    el.oninput = () => { item.costs = { ...item.costs, [el.dataset.cost]: el.value.trim() }; saveSoon('items', item); };
+  });
+  main.querySelectorAll('[data-unit]').forEach((b) => {
+    b.onclick = (e) => {
+      e.preventDefault();
+      item.costs = { ...item.costs, materialUnit: b.dataset.unit };
+      main.querySelectorAll('[data-unit]').forEach((x) => x.classList.toggle('on', x === b));
+      saveNow('items', item);
+    };
+  });
 
   // Val ur registret (samma namn som i offerten), eller egen text.
   main.querySelectorAll('[data-reg]').forEach((b) => {

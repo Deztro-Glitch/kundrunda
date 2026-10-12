@@ -26,7 +26,7 @@ export async function backupAll() {
 }
 
 // Fält som exporten lägger till för läsbarhet – behövs inte i appen.
-const cleanItem = ({ typeLabel, label, contentText, fillLabel, ...rest }) => rest;
+const cleanItem = ({ typeLabel, label, contentText, fillLabel, costText, ...rest }) => rest;
 
 async function restoreVisit(v) {
   await db.put('visits', v.visit);

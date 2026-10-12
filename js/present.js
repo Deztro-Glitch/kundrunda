@@ -3,7 +3,7 @@
 //  • Förbättringar – fylls i tillsammans med kunden, direkt här.
 // Allt kan sparas som PDF.
 import * as db from './db.js';
-import { typeOf, itemLabel, contentText, FILLS, RISK_FLAGS } from './data.js';
+import { typeOf, itemLabel, contentText, costText, FILLS, RISK_FLAGS } from './data.js';
 import { esc, prettyDate, photoUrl, revokeUrls, openViewer, go, toast } from './util.js';
 import { I } from './icons.js';
 
@@ -129,6 +129,7 @@ export async function presentView(visitId, { topbar, main, startAt = 0 }) {
                   ${extra.length ? `<div class="muted">${extra.map(esc).join(' · ')}</div>` : ''}
                   ${it.flags.length ? `<div class="tags">${it.flags.map((f) =>
                     `<span class="tag ${RISK_FLAGS.includes(f) ? 'risk' : ''}">${esc(f)}</span>`).join('')}</div>` : ''}
+                  ${showNotes && costText(it) ? `<div class="muted">Betalar idag: ${esc(costText(it))}</div>` : ''}
                   ${showNotes && it.notes ? `<div class="note">${esc(it.notes)}</div>` : ''}
                 </div>
                 <div class="p-count">${count(it)}<small>st</small></div>

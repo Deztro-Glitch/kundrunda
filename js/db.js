@@ -48,14 +48,26 @@ async function store(name, mode = 'readonly') {
   return db.transaction(name, mode).objectStore(name);
 }
 
-const fix = (name, rows) => (name === 'items' ? rows.map(normalizeItem) : rows);
+// Bilder sparas som rena bilddata (ArrayBuffer), inte som Blob. Safari på iPad kan annars
+// tappa bort bilderna efter en stund (de visas då som ett blått frågetecken).
+async function packPhoto(obj) {
+  const { blob, ...rest } = obj;
+  if (rest.data) return rest;
+  return { ...rest, data: await blob.arrayBuffer(), type: blob.type || 'image/jpeg' };
+}
+function unpackPhoto(p) {
+  if (p && p.data) p.blob = new Blob([p.data], { type: p.type || 'image/jpeg' });
+  return p;
+}
+
+const fix = (name, rows) => (name === 'items' ? rows.map(normalizeItem) : name === 'photos' ? rows.map(unpackPhoto) : rows);
 
 export const uid = () =>
   (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
 
 export async function get(name, id) {
   const row = await wrap((await store(name)).get(id));
-  return name === 'items' ? normalizeItem(row) : row;
+  return name === 'items' ? normalizeItem(row) : name === 'photos' ? unpackPhoto(row) : row;
 }
 
 export async function all(name) {
@@ -69,7 +81,9 @@ export async function by(name, index, value) {
 export async function put(name, obj) {
   obj.updatedAt = Date.now();
   if (!obj.createdAt) obj.createdAt = obj.updatedAt;
-  await wrap((await store(name, 'readwrite')).put(obj));
+  // Bilddata läses färdigt innan sparandet börjar (annars stänger webbläsaren transaktionen).
+  const rec = name === 'photos' ? await packPhoto(obj) : obj;
+  await wrap((await store(name, 'readwrite')).put(rec));
   return obj;
 }
 
@@ -124,6 +138,15 @@ export async function loadVisit(id) {
     by('places', 'visitId', id), by('items', 'visitId', id),
     by('photos', 'visitId', id), by('ideas', 'visitId', id),
   ]);
+  // Bilder sparade av äldre versioner: försök rädda dem till det nya formatet.
+  for (const p of photos) {
+    if (p.data || !p.blob) continue;
+    try {
+      const data = await p.blob.arrayBuffer();
+      p.blob = new Blob([data], { type: p.blob.type || 'image/jpeg' });
+      await put('photos', p);
+    } catch { p.broken = true; }
+  }
   const order = (a, b) => a.createdAt - b.createdAt;
   return { visit, places: places.sort(order), items: items.sort(order), photos: photos.sort(order), ideas: ideas.sort(order) };
 }
