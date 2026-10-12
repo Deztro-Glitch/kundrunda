@@ -10,6 +10,7 @@ export const TYPES = [
   { key: 'karl', label: 'Kärl', main: true, kind: 'normal', sizeLabel: 'Storlek', sizes: ['190 L', '370 L', '660 L', '1000 L'] },
   { key: 'liftdumper', label: 'Liftdumper', main: true, kind: 'normal', sizeLabel: 'Storlek', sizes: ['6–10 m³ töms på plats', '8 m³ lyftbar', '10 m³ öppen', '10 m³ täckt'] },
   { key: 'lastvaxlare', label: 'Lastväxlare', main: true, kind: 'normal', sizeLabel: 'Storlek', sizes: ['20 m³ öppen', '20 m³ täckt', '30 m³ öppen'] },
+  { key: 'direkttom', label: 'Direkttömmande', tile: 'Direkt&shy;tömmande', main: true, kind: 'normal', sizeLabel: 'Storlek', sizes: ['8 m³'] },
   { key: 'balpress', label: 'Balpress', main: true, kind: 'normal', sizeLabel: 'Storlek', sizes: [] },
   { key: 'miljoskap', label: 'Miljöskåp', main: true, kind: 'fa', sizeLabel: 'Storlek', sizes: ['FarligtEnkelt 1', 'FarligtEnkelt 2', 'FarligtEnkelt 3', 'MycketEnkelt 4'] },
   { key: 'fat', label: 'Fat', main: true, kind: 'fa', sizeLabel: 'Sort', sizes: ['Lockfat', 'Spundfat'] },
@@ -31,6 +32,7 @@ export const typeOf = (key) => TYPES.find((t) => t.key === key) || UNKNOWN_TYPE;
 
 // "Kärl 370 L", "Miljöskåp FarligtEnkelt 2" … men för fat räcker sorten: "Spundfat".
 export const itemLabel = (it) => {
+  if (it.regLabel) return it.regLabel; // valt ur offertverktygets register
   const t = typeOf(it.type);
   if (t.sizeLabel === 'Sort' && t.sizes.includes(it.size)) return it.size;
   return [t.label, it.size].filter(Boolean).join(' ');
@@ -64,6 +66,8 @@ export function normalizeItem(it) {
   if (LEGACY_TYPES[it.type]) { it.size = it.size || LEGACY_TYPES[it.type]; it.type = 'karl'; }
   it.flags ||= [];
   it.size ||= '';
+  it.regId ||= '';
+  it.regLabel ||= '';
   if (!Array.isArray(it.materials)) {
     // Förr: ett material + (för miljöskåp) en lista + en fritext.
     const old = [...(it.contents || []), it.contentsNote, it.material]

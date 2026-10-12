@@ -59,6 +59,13 @@ const karl = svg(`
   <path d="M26 28v16M32 28v16M38 28v16" stroke-width="2"/>
   <circle cx="23" cy="55" r="3.5"/>`);
 
+const direkttom = svg(`
+  <path d="M8 22h48v28H8z"/>
+  <path d="M6 22l7-9h38l7 9"/>
+  <path d="M16 31h12M36 31h12"/>
+  <path d="M14 50v5M50 50v5"/>
+  <path d="M32 4v10M28 10l4 4 4-4" stroke-width="2.5"/>`);
+
 const swedebox = svg(`
   <path d="M6 22h52v30H6z"/>
   <path d="M4 16h56v6H4z"/>
@@ -109,7 +116,7 @@ const sorteringsmobel = svg(`
 
 // Ikon per kärltyp (typerna själva finns i data.js).
 export const TYPE_ICONS = {
-  karl, liftdumper, lastvaxlare, balpress, fat, ibc, miljoskap, annat, okand: camera,
+  karl, liftdumper, lastvaxlare, direkttom, balpress, fat, ibc, miljoskap, annat, okand: camera,
   swedebox, batteribox, smacontainer, lysror, elbur, storsack, sackstall, atervinningsbox, sorteringsmobel,
 };
 

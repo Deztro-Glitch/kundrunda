@@ -1,3 +1,5 @@
+import { getRegister, regMaterials } from './register.js';
+
 // Material med Ragn-Sells beteckningar (från ragnsells.se → Material- och sorteringsguide).
 // "fa" = visas för behållare för farligt avfall (miljöskåp, fat …), "normal" = övriga.
 
@@ -87,15 +89,40 @@ export const COMMON = {
 };
 COMMON.all = [...new Set([...COMMON.normal, ...COMMON.fa])];
 
-export const groupsFor = (kind) =>
-  MATERIAL_GROUPS.filter((g) => kind === 'all' || g.kinds.includes(kind));
+// ---------- Om registret från Offertverktyget är inläst används det i stället ----------
+const regKind = (m) => (m.haz ? 'fa' : 'normal');
+const regFits = (m, kind) => kind === 'all' || regKind(m) === kind;
 
-const known = new Map();
-MATERIAL_GROUPS.forEach((g) => g.items.forEach((m) => { if (!known.has(m)) known.set(m, g); }));
+export function groupsFor(kind) {
+  if (getRegister()) {
+    const groups = new Map();
+    regMaterials().filter((m) => regFits(m, kind)).forEach((m) => {
+      const g = m.group || (m.haz ? 'Farligt avfall' : 'Material');
+      if (!groups.has(g)) groups.set(g, []);
+      groups.get(g).push(m.name);
+    });
+    return [...groups.entries()].map(([name, items]) => ({ name, items }));
+  }
+  return MATERIAL_GROUPS.filter((g) => kind === 'all' || g.kinds.includes(kind));
+}
+
+export function commonFor(kind) {
+  if (getRegister()) return regMaterials().filter((m) => m.fav && regFits(m, kind)).map((m) => m.name);
+  return COMMON[kind];
+}
+
+export function allMaterialNames() {
+  if (getRegister()) return regMaterials().map((m) => m.name);
+  return MATERIAL_GROUPS.flatMap((g) => g.items);
+}
 
 // Passar materialet ihop med behållartypen? Egna (okända) material behålls alltid.
 export function fitsKind(material, kind) {
   if (kind === 'all') return true;
+  if (getRegister()) {
+    const m = regMaterials().find((x) => x.name === material);
+    if (m) return regFits(m, kind);
+  }
   const kinds = MATERIAL_GROUPS.filter((g) => g.items.includes(material)).flatMap((g) => g.kinds);
   return !kinds.length || kinds.includes(kind);
 }
@@ -127,7 +154,7 @@ export function customMaterials() {
   try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch { return []; }
 }
 export function rememberCustom(name) {
-  if (known.has(name)) return;
+  if (allMaterialNames().includes(name)) return;
   try {
     const list = [name, ...customMaterials().filter((m) => m !== name)].slice(0, 40);
     localStorage.setItem(KEY, JSON.stringify(list));

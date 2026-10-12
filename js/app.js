@@ -4,7 +4,8 @@ import { I } from './icons.js';
 import {
   TYPES, typeOf, itemLabel, contentText, FILLS, FREQS, SUPPLIERS, FLAGS, RISK_FLAGS, PLACE_SUGGESTIONS,
 } from './data.js';
-import { MATERIAL_GROUPS, COMMON, groupsFor, fitsKind, customMaterials, rememberCustom } from './materials.js';
+import { commonFor, groupsFor, allMaterialNames, fitsKind, customMaterials, rememberCustom } from './materials.js';
+import { getRegister, parseRegister, saveRegister, clearRegister, regContainersFor, regLabel } from './register.js';
 import {
   esc, today, MONTHS, prettyDate, plural, go, photoUrl, revokeUrls, toast, openViewer,
 } from './util.js';
@@ -225,6 +226,7 @@ async function homeView() {
   const placeCount = (id) => places.filter((r) => r.visitId === id).length;
   const containers = (id) => items.filter((i) => i.visitId === id).reduce((s, i) => s + (Number(i.count) || 1), 0);
 
+  const reg = getRegister();
   setTop({ brand: true, title: 'Mina besök' });
   main.innerHTML = `
     <button class="btn big block" id="new">${I.plus} Nytt besök</button>
@@ -251,7 +253,41 @@ async function homeView() {
           <button class="btn ghost" id="restore">${I.doc} Läs in från fil</button>
         </div>
       </div>
+    </div>
+
+    <div class="section">
+      <div class="card backup">
+        <h3>${I.clipboard.replace('<svg', '<svg width="28" height="28"')} Register från offertverktyget</h3>
+        <p class="hint">${reg
+          ? `Inläst ${prettyDate(new Date(reg.importedAt).toISOString().slice(0, 10))}: ${reg.items.filter((x) => x.type === 'karl').length} kärl och containrar, ${reg.items.filter((x) => x.type === 'material').length} material. Du väljer samma namn som i offerten.`
+          : 'Inte inläst. Kundrunda använder Ragn-Sells standardlistor. Exportera registret i offertverktyget (Register → Exportera) och läs in filen här, så blir namnen desamma i båda.'}</p>
+        <div class="btn-row">
+          <button class="btn ${reg ? 'ghost' : ''}" id="regLoad">${I.doc} ${reg ? 'Läs in nytt register' : 'Läs in register'}</button>
+          ${reg ? `<button class="btn danger" id="regClear">${I.trash} Ta bort registret</button>` : ''}
+        </div>
+      </div>
     </div>`;
+
+  main.querySelector('#regLoad').onclick = () => {
+    importInput.value = '';
+    importInput.onchange = async () => {
+      const file = importInput.files?.[0];
+      if (!file) return;
+      try {
+        const items = parseRegister(JSON.parse(await file.text()));
+        if (!items) throw new Error('Det här är ingen registerfil från offertverktyget.');
+        saveRegister(items);
+        toast(`Registret är inläst – ${items.length} poster`);
+        refresh();
+      } catch (e) { toast(e instanceof SyntaxError ? 'Filen gick inte att läsa.' : e.message, 4000); }
+    };
+    importInput.click();
+  };
+  main.querySelector('#regClear')?.addEventListener('click', () => {
+    if (!confirm('Ta bort registret? Kundrunda går tillbaka till Ragn-Sells standardlistor. Dina besök påverkas inte.')) return;
+    clearRegister();
+    refresh();
+  });
 
   main.querySelector('#backup')?.addEventListener('click', async () => {
     const t = toast('Förbereder säkerhetskopia …', 0);
@@ -325,7 +361,7 @@ async function visitView(id) {
 
     <div class="btn-row" style="margin-top:16px">
       <button class="btn big" id="present">${I.present} Visa för kunden</button>
-      <button class="btn big ghost" id="exportJson">${I.share} Exportera besöket</button>
+      <button class="btn big ghost" id="exportJson">${I.share} Exportera till offert</button>
     </div>
 
     <div class="section">
@@ -548,7 +584,7 @@ function materialPicker(item, showAll = false) {
   const kind = typeOf(item.type).kind;
   const chip = (m) => matChip(item, m);
   const mine = customMaterials().filter((m) => fitsKind(m, kind));
-  const common = [...new Set([...COMMON[kind], ...mine])].filter((m) => !item.materials.includes(m));
+  const common = [...new Set([...commonFor(kind), ...mine])].filter((m) => !item.materials.includes(m));
 
   return `
     <div class="mat-selected">
@@ -575,7 +611,7 @@ function mountMaterialPicker(box, item, { showAll = false, focus = false } = {})
     m = m.trim();
     if (!m) return;
     const kind = typeOf(item.type).kind;
-    const known = MATERIAL_GROUPS.flatMap((g) => g.items).find((x) => x.toLowerCase() === m.toLowerCase());
+    const known = allMaterialNames().find((x) => x.toLowerCase() === m.toLowerCase());
     m = known || m;
     if (!item.materials.includes(m)) item.materials = [...item.materials, m];
     if (!known) rememberCustom(m);
@@ -625,6 +661,7 @@ async function itemView(id) {
   const photos = d.photos.filter((p) => p.itemId === id);
   const ideas = d.ideas.filter((x) => x.itemId === id);
   const t = typeOf(item.type);
+  const regItems = regContainersFor(item.type);
   const hasMore = item.frequency || item.supplier || item.notes;
 
   setTop({ back: `#/plats/${item.placeId}`, title: itemLabel(item), sub: place?.name });
@@ -638,8 +675,12 @@ async function itemView(id) {
     </div>
 
     ${item.type ? `<div class="section">
-      ${sectionHead(t.sizeLabel)}
-      ${choiceGroup('size', t.sizes, item.size, t.sizes.length ? `Annan ${t.sizeLabel.toLowerCase()} – skriv här` : `Skriv ${t.sizeLabel.toLowerCase()}`)}
+      ${regItems.length ? `${sectionHead('Vilken?', '<span class="muted">Från offertverktygets register</span>')}
+      <div class="chips">${regItems.map((r) =>
+        `<button class="chip ${item.regId === r.id ? 'on' : ''}" data-reg="${esc(r.id)}">${esc(regLabel(r))}</button>`).join('')}</div>
+      <input class="input" style="margin-top:10px" id="ownSize" value="${esc(item.regId ? '' : item.size)}" placeholder="Annat – skriv här" autocomplete="off">`
+      : `${sectionHead(t.sizeLabel)}
+      ${choiceGroup('size', t.sizes, item.size, t.sizes.length ? `Annan ${t.sizeLabel.toLowerCase()} – skriv här` : `Skriv ${t.sizeLabel.toLowerCase()}`)}`}
     </div>` : ''}
 
     <div class="section">
@@ -704,12 +745,38 @@ async function itemView(id) {
   bindTypeGrid(main);
   mountMaterialPicker(main.querySelector('#matBox'), item);
 
+  // Val ur registret (samma namn som i offerten), eller egen text.
+  main.querySelectorAll('[data-reg]').forEach((b) => {
+    b.onclick = () => {
+      const r = regItems.find((x) => x.id === b.dataset.reg);
+      const on = item.regId !== r.id;
+      item.regId = on ? r.id : '';
+      item.regLabel = on ? regLabel(r) : '';
+      item.size = '';
+      main.querySelectorAll('[data-reg]').forEach((x) => x.classList.toggle('on', on && x === b));
+      main.querySelector('#ownSize').value = '';
+      setTitle(itemLabel(item));
+      saveNow('items', item);
+    };
+  });
+  const own = main.querySelector('#ownSize');
+  if (own) own.oninput = () => {
+    item.size = own.value.trim();
+    item.regId = '';
+    item.regLabel = '';
+    main.querySelectorAll('[data-reg]').forEach((x) => x.classList.remove('on'));
+    setTitle(itemLabel(item));
+    saveSoon('items', item);
+  };
+
   // Byte av typ: nya storleksval, och material som inte passar (t.ex. wellpapp i miljöskåp) tas bort.
   main.querySelectorAll('[data-type]').forEach((b) => {
     b.onclick = async () => {
       if (item.type === b.dataset.type) return;
       item.type = b.dataset.type;
       item.size = '';
+      item.regId = '';
+      item.regLabel = '';
       const nt = typeOf(item.type);
       const before = item.materials.length;
       item.materials = item.materials.filter((m) => fitsKind(m, nt.kind));
