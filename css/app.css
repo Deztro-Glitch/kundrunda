@@ -309,3 +309,10 @@ textarea.input { min-height: 120px; resize: vertical; line-height: 1.45; }
 .danger-zone { margin-top: 40px; padding-top: 20px; border-top: 2px solid var(--line); }
 .muted { color: var(--muted); }
 .spacer { height: 12px; }
+
+/* ---------- Säkerhetskopia ---------- */
+.backup h3 { display: flex; align-items: center; gap: 10px; color: var(--green-dark); }
+.backup h3 svg { width: 28px; height: 28px; }
+.backup .hint { margin: 8px 0 16px; }
+.backup.due { border: 2px solid var(--danger); }
+.backup.due .hint { color: var(--danger); font-weight: 500; }

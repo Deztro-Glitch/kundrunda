@@ -10,12 +10,26 @@ import {
 } from './util.js';
 import { presentView, leavePresent } from './present.js';
 import { exportVisitJson } from './export.js';
+import { backupAll, importFile, lastBackup } from './backup.js';
+
+const daysSince = (ms) => (ms ? Math.floor((Date.now() - ms) / 864e5) : Infinity);
+function backupText(hasVisits) {
+  const days = daysSince(lastBackup());
+  const when = days === Infinity ? 'Ingen säkerhetskopia gjord än.'
+    : days === 0 ? 'Senaste säkerhetskopian: idag.'
+    : days === 1 ? 'Senaste säkerhetskopian: igår.'
+    : `Senaste säkerhetskopian: för ${days} dagar sedan.`;
+  return hasVisits
+    ? `${when} Allt finns bara i den här iPaden – spara en kopia i Filer eller mejla den till dig själv, gärna en gång i veckan.`
+    : 'Har du en säkerhetskopia från tidigare? Läs in den här.';
+}
 
 const topbar = document.getElementById('topbar');
 const main = document.getElementById('main');
 const bottombar = document.getElementById('bottombar');
 const camera = document.getElementById('camera');
 const library = document.getElementById('library');
+const importInput = document.getElementById('importFile');
 
 function flashSaved() {
   const s = topbar.querySelector('.saved');
@@ -226,7 +240,45 @@ async function homeView() {
         </button>`;
       }).join('')}</div>` : `
       <div class="empty">${I.clipboard}<p>Inga besök än.</p><p>Tryck på <b>Nytt besök</b> när du är hos kunden.</p></div>`}
+    </div>
+
+    <div class="section">
+      <div class="card backup ${visits.length && daysSince(lastBackup()) > 7 ? 'due' : ''}">
+        <h3>${I.shield} Säkerhetskopia</h3>
+        <p class="hint">${backupText(visits.length)}</p>
+        <div class="btn-row">
+          ${visits.length ? `<button class="btn" id="backup">${I.share} Säkerhetskopiera alla besök</button>` : ''}
+          <button class="btn ghost" id="restore">${I.doc} Läs in från fil</button>
+        </div>
+      </div>
     </div>`;
+
+  main.querySelector('#backup')?.addEventListener('click', async () => {
+    const t = toast('Förbereder säkerhetskopia …', 0);
+    try {
+      const r = await backupAll();
+      t.remove();
+      if (r.ok) toast(`Klart – ${plural(r.count, 'besök', 'besök')}, ${Math.max(1, Math.round(r.size / 1e6))} MB`);
+      refresh();
+    } catch (e) { console.error(e); toast('Säkerhetskopian misslyckades'); }
+  });
+  main.querySelector('#restore').onclick = () => {
+    importInput.value = '';
+    importInput.onchange = async () => {
+      const file = importInput.files?.[0];
+      if (!file) return;
+      const t = toast('Läser in …', 0);
+      try {
+        const r = await importFile(file);
+        t.remove();
+        const parts = [r.added && `${plural(r.added, 'besök', 'besök')} tillagda`, r.replaced && `${r.replaced} ersatta`,
+          r.skipped && `${r.skipped} behölls som de var`].filter(Boolean);
+        toast(parts.length ? parts.join(', ') : 'Inga besök i filen', 3500);
+        refresh();
+      } catch (e) { console.error(e); t.remove(); toast(e.message || 'Filen kunde inte läsas in', 4000); }
+    };
+    importInput.click();
+  };
 
   main.querySelector('#new').onclick = async () => {
     const v = await db.put('visits', { id: db.uid(), customer: '', address: '', contact: '', date: today(), notes: '' });

@@ -21,7 +21,7 @@ export async function buildJson(visitId) {
   for (const p of d.photos) {
     photos.push({
       id: p.id, placeId: p.placeId, itemId: p.itemId || null,
-      width: p.width, height: p.height, dataUrl: await blobToDataUrl(p.blob),
+      width: p.width, height: p.height, createdAt: p.createdAt, dataUrl: await blobToDataUrl(p.blob),
     });
   }
   return {

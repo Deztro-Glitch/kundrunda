@@ -133,6 +133,7 @@ export const I = {
   doc: ui('<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/>'),
   flag: ui('<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>'),
   eye: ui('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
+  shield: ui('<path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/>'),
   image: ui('<rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M20.5 16l-5-5-8 8"/>'),
   pin: ui('<path d="M12 21s-6.5-6-6.5-11a6.5 6.5 0 0113 0c0 5-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/>'),
   clipboard: svg('<rect x="14" y="10" width="36" height="46" rx="4"/><path d="M24 10V7h16v3"/><path d="M22 24h20M22 32h20M22 40h12"/>'),
