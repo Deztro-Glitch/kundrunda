@@ -2,14 +2,24 @@
 import { TYPE_ICONS } from './icons.js';
 
 // Kärltyper. "sizes" är de val som visas med ett tryck; det går alltid att skriva egen storlek.
+// Namn och storlekar enligt ragnsells.se (containertyper och småbehållare & boxar).
 export const TYPES = [
-  { key: 'karl', label: 'Kärl', sizeLabel: 'Storlek', sizes: ['140 L', '190 L', '240 L', '370 L', '660 L'] },
-  { key: 'liftdumper', label: 'Liftdumper', sizeLabel: 'Storlek', sizes: ['6 m³', '8 m³', '10 m³'] },
-  { key: 'lastvaxlare', label: 'Lastväxlare', sizeLabel: 'Storlek', sizes: ['10 m³', '20 m³', '30 m³', '40 m³'] },
+  { key: 'karl', label: 'Kärl', sizeLabel: 'Storlek', sizes: ['190 L', '370 L', '660 L', '1000 L'] },
+  { key: 'liftdumper', label: 'Liftdumper', sizeLabel: 'Storlek', sizes: ['6–10 m³ töms på plats', '8 m³ lyftbar', '10 m³ öppen', '10 m³ täckt'] },
+  { key: 'lastvaxlare', label: 'Lastväxlare', sizeLabel: 'Storlek', sizes: ['20 m³ öppen', '20 m³ täckt', '30 m³ öppen'] },
   { key: 'balpress', label: 'Balpress', sizeLabel: 'Storlek', sizes: [] },
+  { key: 'miljoskap', label: 'Miljöskåp', sizeLabel: 'Storlek', sizes: ['FarligtEnkelt 1', 'FarligtEnkelt 2', 'FarligtEnkelt 3', 'MycketEnkelt 4'], collects: true },
   { key: 'fat', label: 'Fat', sizeLabel: 'Sort', sizes: ['Lockfat', 'Spundfat'] },
   { key: 'ibc', label: 'IBC', sizeLabel: 'Storlek', sizes: ['1000 L'] },
-  { key: 'miljoskap', label: 'Miljöskåp', sizeLabel: 'Storlek', sizes: ['Storlek 1', 'Storlek 2', 'Storlek 3', 'Storlek 4'], collects: true },
+  { key: 'swedebox', label: 'Swedebox', sizeLabel: 'Storlek', sizes: ['500 L', '829 L', '865 L'] },
+  { key: 'batteribox', label: 'Batteribox', sizeLabel: 'Storlek', sizes: ['535 L', '670 L'] },
+  { key: 'smacontainer', label: 'Småcontainer', sizeLabel: 'Storlek', sizes: ['1100 L', '1300 L', 'Kryobox 600 L', '3 m³ internt bruk'] },
+  { key: 'lysror', label: 'Lysrörsbehållare', tile: 'Lysrörs&shy;behållare', sizeLabel: 'Sort', sizes: ['Lysrörscontainer', 'Lysrörskartong', 'Lysrörstub'] },
+  { key: 'elbur', label: 'Elbur', sizeLabel: 'Storlek', sizes: [] },
+  { key: 'storsack', label: 'StorSäck', sizeLabel: 'Storlek', sizes: ['160 L', '1000 L', '2000 L'] },
+  { key: 'sackstall', label: 'Säckställ / bur', sizeLabel: 'Sort', sizes: ['Säckställ', 'Wellpappbur'] },
+  { key: 'atervinningsbox', label: 'Återvinningsbox', tile: 'Återvinnings&shy;box', sizeLabel: 'Storlek', sizes: ['21 L', '29 L', '42 L', '60 L', '90 L', 'Batteriholk'] },
+  { key: 'sorteringsmobel', label: 'Sorteringsmöbel', tile: 'Sorterings&shy;möbel', sizeLabel: 'Storlek', sizes: [] },
   { key: 'annat', label: 'Annat', sizeLabel: 'Storlek', sizes: [] },
 ].map((t) => ({ ...t, icon: TYPE_ICONS[t.key] }));
 
@@ -31,7 +41,7 @@ export const MATERIALS = [
 // Det som kan samlas i ett miljöskåp (flera val).
 export const HAZARDOUS = [
   'Färg och lack', 'Lösningsmedel', 'Spillolja', 'Oljefilter', 'Oljiga trasor och absorbent',
-  'Sprayburkar', 'Batterier', 'Lysrör och lampor', 'Kemikalier', 'Elavfall', 'Lim och fogmassa',
+  'Sprayburkar', 'Glykol', 'Batterier', 'Lysrör och lampor', 'Kemikalier', 'Elavfall', 'Lim och fogmassa',
 ];
 
 export const FILLS = [

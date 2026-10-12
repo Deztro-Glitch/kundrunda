@@ -220,6 +220,7 @@ textarea.input { min-height: 120px; resize: vertical; line-height: 1.45; }
   transition: transform .12s var(--ease), background .15s, border-color .15s;
 }
 .type svg { width: 54px; height: 54px; }
+.type span { hyphens: manual; -webkit-hyphens: manual; }
 .type:active { transform: scale(.96); background: var(--green-tint); }
 .type.on { border-color: var(--green); background: var(--green-tint); box-shadow: inset 0 0 0 2px var(--green); }
 .type.photo-first { background: var(--green); color: #fff; border-color: var(--green); }

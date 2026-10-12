@@ -59,8 +59,59 @@ const karl = svg(`
   <path d="M26 28v16M32 28v16M38 28v16" stroke-width="2"/>
   <circle cx="23" cy="55" r="3.5"/>`);
 
+const swedebox = svg(`
+  <path d="M6 22h52v30H6z"/>
+  <path d="M4 16h56v6H4z"/>
+  <path d="M10 52v4M54 52v4M6 30h52" stroke-width="2"/>`);
+
+const batteribox = svg(`
+  <path d="M8 20h48v34H8z"/>
+  <rect x="20" y="30" width="24" height="14" rx="2" stroke-width="2.5"/>
+  <path d="M26 30v-3M38 30v-3" stroke-width="2.5"/>
+  <path d="M28 37h4M36 35v4M34 37h4" stroke-width="2"/>
+  <path d="M8 20l4-6h40l4 6"/>`);
+
+const smacontainer = svg(`
+  <path d="M6 20h52l-5 30H11z"/>
+  <path d="M6 20l6-6h40l6 6"/>
+  <path d="M22 26v18M32 26v18M42 26v18" stroke-width="2"/>
+  <path d="M14 50v5M50 50v5"/>`);
+
+const lysror = svg(`
+  <rect x="12" y="8" width="40" height="48" rx="3"/>
+  <path d="M20 16v32M28 16v32M36 16v32M44 16v32" stroke-width="2.5"/>`);
+
+const elbur = svg(`
+  <rect x="8" y="10" width="48" height="40" rx="2"/>
+  <path d="M8 20h48M8 30h48M8 40h48M20 10v40M32 10v40M44 10v40" stroke-width="1.5"/>
+  <path d="M12 50v6M52 50v6"/>
+  <path d="M34 22l-6 9h6l-4 9" stroke-width="3"/>`);
+
+const storsack = svg(`
+  <path d="M12 18h40l-3 36H15z"/>
+  <path d="M12 18l-4-8M52 18l4-8M20 18v-6M44 18v-6" stroke-width="2.5"/>
+  <path d="M16 30h32" stroke-width="2"/>`);
+
+const sackstall = svg(`
+  <path d="M14 8v48M50 8v48M14 14h36"/>
+  <path d="M17 14c0 6 2 30 4 36h22c2-6 4-30 4-36" stroke-width="2.5"/>
+  <path d="M10 56h8M46 56h8"/>`);
+
+const atervinningsbox = svg(`
+  <path d="M12 22h40l-3 30H15z"/>
+  <path d="M10 16h44v6H10z"/>
+  <path d="M27 31l5-5 5 5M32 26v14M24 42h16" stroke-width="2.5"/>`);
+
+const sorteringsmobel = svg(`
+  <rect x="6" y="12" width="52" height="44" rx="2"/>
+  <path d="M23 12v44M41 12v44"/>
+  <path d="M10 20h9M27 20h10M45 20h9" stroke-width="3.5"/>`);
+
 // Ikon per kärltyp (typerna själva finns i data.js).
-export const TYPE_ICONS = { karl, liftdumper, lastvaxlare, balpress, fat, ibc, miljoskap, annat, okand: camera };
+export const TYPE_ICONS = {
+  karl, liftdumper, lastvaxlare, balpress, fat, ibc, miljoskap, annat, okand: camera,
+  swedebox, batteribox, smacontainer, lysror, elbur, storsack, sackstall, atervinningsbox, sorteringsmobel,
+};
 
 // ---------- Gränssnittsikoner ----------
 const ui = (body) => svg(body, '0 0 24 24', 2.2);

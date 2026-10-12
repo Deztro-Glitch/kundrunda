@@ -123,6 +123,9 @@ body.presenting main { max-width: none; padding: 0; animation: none; }
 }
 .deck-actions { position: fixed; z-index: 10; top: calc(env(safe-area-inset-top) + 16px); right: 16px; display: flex; gap: 10px; }
 .deck-actions .btn { box-shadow: var(--shadow); }
+.deck-actions, .deck-close { transition: opacity .25s, transform .25s var(--ease); }
+.deck-ui.dim .deck-actions { opacity: 0; transform: translateY(-12px); pointer-events: none; }
+.deck-ui.dim .deck-close { opacity: .6; }
 .deck-nav {
   position: fixed; z-index: 10; bottom: calc(env(safe-area-inset-bottom) + 18px);
   width: 64px; height: 64px; border-radius: 50%; border: 0;

@@ -31,7 +31,6 @@ export async function presentView(visitId, { topbar, main, startAt = 0 }) {
       ${coverPhoto ? `<img class="cover-bg" src="${photoUrl(coverPhoto)}" alt="">` : ''}
       <div class="cover-inner">
         <div class="cover-brand">Ragn-Sells</div>
-        <div class="eyebrow light">Genomgång av avfallshantering</div>
         <h1>${esc(visit.customer || 'Kund')}</h1>
         <p class="cover-meta">${[visit.address, prettyDate(visit.date, true)].filter(Boolean).map(esc).join(' · ')}</p>
         ${visit.contact ? `<p class="cover-meta">Kontaktperson: ${esc(visit.contact)}</p>` : ''}
@@ -80,8 +79,9 @@ export async function presentView(visitId, { topbar, main, startAt = 0 }) {
   const placeSlides = places.map((p, i) => {
     const pItems = items.filter((it) => it.placeId === p.id);
     const pPhotos = photos.filter((ph) => ph.placeId === p.id);
-    const ordered = [...pPhotos.filter((ph) => !ph.itemId), ...pPhotos.filter((ph) => ph.itemId)];
-    const [hero, ...rest] = ordered;
+    // Bilder på platsen i galleriet. Kärlens bilder visas vid kärlen – utom när platsen saknar egna bilder.
+    const placeOnly = pPhotos.filter((ph) => !ph.itemId);
+    const [hero, ...rest] = placeOnly.length ? placeOnly : pPhotos.slice(0, 1);
     const pIdeas = realIdeas.filter((x) => x.placeId === p.id);
     return `
       <section class="slide"><div class="slide-inner">
@@ -180,6 +180,11 @@ export async function presentView(visitId, { topbar, main, startAt = 0 }) {
     main.querySelector('[data-next]').disabled = i === slides.length - 1;
   };
   deck.addEventListener('scroll', () => requestAnimationFrame(mark), { passive: true });
+  // Tona ner knapparna när man skrollar ner på en sida, så de inte skymmer innehållet.
+  const ui = main.querySelector('.deck-ui');
+  main.querySelectorAll('.slide').forEach((s) => s.addEventListener('scroll', () => {
+    ui.classList.toggle('dim', s.scrollTop > 40);
+  }, { passive: true }));
   requestAnimationFrame(() => { show(startAt, false); mark(); });
 
   main.querySelector('[data-prev]').onclick = () => show(index() - 1);

@@ -342,7 +342,7 @@ async function placeView(id) {
     ${sectionHead('Lägg till kärl')}
     <div class="type-grid">
       <button class="type photo-first" id="photoFirst">${I.camera}<span>Foto först</span></button>
-      ${TYPES.map((t) => `<button class="type" data-type="${t.key}">${t.icon}<span>${t.label}</span></button>`).join('')}
+      ${TYPES.map((t) => `<button class="type" data-type="${t.key}">${t.icon}<span>${t.tile || t.label}</span></button>`).join('')}
     </div>
     <div class="photo-first-row">
       <p class="hint">Foto först: ta en bild nu och välj typ och detaljer senare.</p>
@@ -470,7 +470,7 @@ async function itemView(id) {
     <div class="section">
       ${sectionHead('Typ')}
       <div class="type-grid">${TYPES.map((x) =>
-        `<button class="type ${x.key === item.type ? 'on' : ''}" data-type="${x.key}">${x.icon}<span>${x.label}</span></button>`).join('')}</div>
+        `<button class="type ${x.key === item.type ? 'on' : ''}" data-type="${x.key}">${x.icon}<span>${x.tile || x.label}</span></button>`).join('')}</div>
     </div>
 
     ${item.type ? `<div class="section">
