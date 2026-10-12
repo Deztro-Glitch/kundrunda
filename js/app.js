@@ -2,17 +2,18 @@ import * as db from './db.js';
 import { compress } from './image.js';
 import { I } from './icons.js';
 import {
-  TYPES, typeOf, itemLabel, contentText, MATERIALS, HAZARDOUS, FILLS, FREQS, SUPPLIERS,
-  FLAGS, RISK_FLAGS, PLACE_SUGGESTIONS,
+  TYPES, typeOf, itemLabel, contentText, FILLS, FREQS, SUPPLIERS, FLAGS, RISK_FLAGS, PLACE_SUGGESTIONS,
 } from './data.js';
+import { MATERIAL_GROUPS, COMMON, groupsFor, fitsKind, customMaterials, rememberCustom } from './materials.js';
 import {
-  esc, today, MONTHS, prettyDate, plural, go, byCreated, photoUrl, revokeUrls, toast, openViewer,
+  esc, today, MONTHS, prettyDate, plural, go, photoUrl, revokeUrls, toast, openViewer,
 } from './util.js';
 import { presentView, leavePresent } from './present.js';
 import { exportVisitJson } from './export.js';
 
 const topbar = document.getElementById('topbar');
 const main = document.getElementById('main');
+const bottombar = document.getElementById('bottombar');
 const camera = document.getElementById('camera');
 const library = document.getElementById('library');
 
@@ -58,6 +59,14 @@ function bindFields(root, obj, store, onChange) {
   });
 }
 
+// Stor "Klar"-knapp längst ner på skärmen – nära tummen.
+function setBottom(label, onClick) {
+  bottombar.innerHTML = label ? `<button class="btn big block">${I.check} ${esc(label)}</button>` : '';
+  bottombar.hidden = !label;
+  document.body.classList.toggle('has-bottombar', !!label);
+  if (label) bottombar.querySelector('button').onclick = onClick;
+}
+
 // ---------- Kamera och bildbibliotek ----------
 function pickPhoto(onFile, { fromLibrary = false } = {}) {
   const input = fromLibrary ? library : camera;
@@ -97,15 +106,38 @@ function bindPhotos(root, photos, link) {
   });
 }
 
-// ---------- Idéer ----------
-// Listan visas på besöket, platsen och kärlet. Varje idé kan kopplas till en plats eller ett kärl.
+// ---------- Kärltyper ----------
+// De vanligaste typerna syns direkt, resten under "Fler typer".
+function typeGrid(selected, { photoFirst = false } = {}) {
+  const tile = (t) => `<button class="type ${t.key === selected ? 'on' : ''}" data-type="${t.key}">${t.icon}<span>${t.tile || t.label}</span></button>`;
+  const more = TYPES.filter((t) => !t.main);
+  const open = more.some((t) => t.key === selected);
+  return `
+    <div class="type-grid">
+      ${photoFirst ? `<button class="type photo-first" id="photoFirst">${I.camera}<span>Foto först</span></button>` : ''}
+      ${TYPES.filter((t) => t.main).map(tile).join('')}
+      <button class="type more-toggle" data-more-types>${open ? I.minus : I.plus}<span>${open ? 'Färre typer' : 'Fler typer'}</span></button>
+    </div>
+    <div class="type-grid more-types" ${open ? '' : 'hidden'}>${more.map(tile).join('')}</div>`;
+}
+function bindTypeGrid(root) {
+  const btn = root.querySelector('[data-more-types]');
+  btn.onclick = () => {
+    const box = root.querySelector('.more-types');
+    box.hidden = !box.hidden;
+    btn.innerHTML = box.hidden ? `${I.plus}<span>Fler typer</span>` : `${I.minus}<span>Färre typer</span>`;
+  };
+}
+
+// ---------- Förbättringar ----------
+// Listan visas på besöket, platsen och kärlet. Varje förbättring kan kopplas till en plats eller ett kärl.
 let focusIdea = null;
 
 function ideasHtml(ideas, places, items) {
   const option = (val, label, sel) => `<option value="${val}" ${sel ? 'selected' : ''}>${esc(label)}</option>`;
   const options = (idea) => {
     const cur = idea.itemId ? `i:${idea.itemId}` : idea.placeId ? `p:${idea.placeId}` : '';
-    return option('', 'Hela besöket', cur === '') + places.map((p) =>
+    return option('', 'Hela verksamheten', cur === '') + places.map((p) =>
       option(`p:${p.id}`, p.name, cur === `p:${p.id}`) + items.filter((it) => it.placeId === p.id).map((it) =>
         option(`i:${it.id}`, `   ${p.name} › ${itemLabel(it)}`, cur === `i:${it.id}`)).join('')).join('');
   };
@@ -113,10 +145,10 @@ function ideasHtml(ideas, places, items) {
     <div class="idea" data-idea="${x.id}">
       <div class="idea-ico">${I.idea}</div>
       <div class="idea-body">
-        <textarea class="input" rows="2" placeholder="Skriv vad ni pratade om …">${esc(x.text)}</textarea>
+        <textarea class="input" rows="2" placeholder="Vad ska bli bättre?">${esc(x.text)}</textarea>
         <div class="idea-foot">
           <label class="idea-link"><span>Gäller</span><select class="input">${options(x)}</select></label>
-          <button class="btn danger icon-only" data-del-idea aria-label="Ta bort idé">${I.trash}</button>
+          <button class="btn danger icon-only" data-del-idea aria-label="Ta bort">${I.trash}</button>
         </div>
       </div>
     </div>`).join('')}</div>`;
@@ -135,7 +167,7 @@ function bindIdeas(root, ideas, items) {
       refresh();
     };
     el.querySelector('[data-del-idea]').onclick = async () => {
-      if (idea.text?.trim() && !confirm('Ta bort idén?')) return;
+      if (idea.text?.trim() && !confirm('Ta bort förbättringen?')) return;
       pending.delete(idea.id);
       await db.del('ideas', idea.id);
       refresh();
@@ -204,7 +236,7 @@ async function homeView() {
 }
 
 // =====================================================================
-// Ett besök: kunduppgifter, platser, idéer, anteckningar
+// Ett besök: kunduppgifter, platser, förbättringar, anteckningar
 // =====================================================================
 async function visitView(id) {
   const d = await db.loadVisit(id);
@@ -259,9 +291,10 @@ async function visitView(id) {
     </div>
 
     <div class="section">
-      ${sectionHead('Idéer att förbättra')}
+      ${sectionHead('Förbättringar')}
+      <p class="hint" style="margin:-4px 0 12px">Det kunden vill förbättra. Går också att fylla i tillsammans med kunden i <b>Visa för kunden</b>.</p>
       ${ideasHtml(ideas, places, items)}
-      <button class="btn ghost block add-idea" id="addIdea">${I.plus} Ny idé</button>
+      <button class="btn ghost block add-idea" id="addIdea">${I.plus} Ny förbättring</button>
     </div>
 
     <div class="section">
@@ -301,7 +334,7 @@ async function visitView(id) {
   };
 
   main.querySelector('#delVisit').onclick = async () => {
-    if (!confirm(`Ta bort besöket hos ${visit.customer || 'kunden'} med alla platser, kärl, idéer och bilder? Det går inte att ångra.`)) return;
+    if (!confirm(`Ta bort besöket hos ${visit.customer || 'kunden'} med alla platser, kärl, förbättringar och bilder? Det går inte att ångra.`)) return;
     await db.deleteVisit(id);
     toast('Besöket är borttaget');
     go('#/');
@@ -309,7 +342,7 @@ async function visitView(id) {
 }
 
 // =====================================================================
-// En plats: kärl, bilder, idéer, anteckning
+// En plats: kärl, bilder, förbättringar, anteckning
 // =====================================================================
 async function placeView(id) {
   const place = await db.get('places', id);
@@ -340,10 +373,7 @@ async function placeView(id) {
   setTop({ back: `#/besok/${place.visitId}`, title: place.name, sub: d.visit.customer });
   main.innerHTML = `
     ${sectionHead('Lägg till kärl')}
-    <div class="type-grid">
-      <button class="type photo-first" id="photoFirst">${I.camera}<span>Foto först</span></button>
-      ${TYPES.map((t) => `<button class="type" data-type="${t.key}">${t.icon}<span>${t.tile || t.label}</span></button>`).join('')}
-    </div>
+    ${typeGrid(null, { photoFirst: true })}
     <div class="photo-first-row">
       <p class="hint">Foto först: ta en bild nu och välj typ och detaljer senare.</p>
       <button class="btn ghost" id="photoFirstLib">${I.image} Foto först från bilder</button>
@@ -361,9 +391,9 @@ async function placeView(id) {
     </div>
 
     <div class="section">
-      ${sectionHead('Idéer för platsen')}
+      ${sectionHead('Förbättringar här')}
       ${ideasHtml(ideas, d.places, d.items)}
-      <button class="btn ghost block add-idea" id="addIdea">${I.plus} Ny idé om ${esc(place.name)}</button>
+      <button class="btn ghost block add-idea" id="addIdea">${I.plus} Ny förbättring för ${esc(place.name)}</button>
     </div>
 
     <div class="section">
@@ -379,14 +409,15 @@ async function placeView(id) {
       <button class="btn danger" id="delPlace">${I.trash} Ta bort platsen</button>
     </div>`;
 
+  setBottom('Klar – tillbaka till besöket', () => go(`#/besok/${place.visitId}`));
   bindFields(main, place, 'places', () => setTitle(place.name || 'Plats'));
   bindPhotos(main, placePhotos, { visitId: place.visitId, placeId: id, itemId: null });
   bindIdeas(main, ideas, d.items);
+  bindTypeGrid(main);
 
   const newItem = (type) => db.put('items', {
     id: db.uid(), visitId: place.visitId, placeId: id, type, size: '', count: 1,
-    material: typeOf(type).collects ? 'Farligt avfall' : '', contents: [], contentsNote: '',
-    fill: '', frequency: '', supplier: '', flags: [], notes: '',
+    materials: [...(typeOf(type).defaults || [])], fill: '', frequency: '', supplier: '', flags: [], notes: '',
   });
   main.querySelectorAll('[data-type]').forEach((b) => {
     b.onclick = async () => { const it = await newItem(b.dataset.type); go(`#/karl/${it.id}`); };
@@ -404,14 +435,14 @@ async function placeView(id) {
   main.querySelector('#addIdea').onclick = () => newIdea({ visitId: place.visitId, placeId: id });
 
   main.querySelector('#delPlace').onclick = async () => {
-    if (!confirm(`Ta bort platsen "${place.name}" med alla kärl och bilder? Idéerna finns kvar under besöket. Det går inte att ångra.`)) return;
+    if (!confirm(`Ta bort platsen "${place.name}" med alla kärl och bilder? Förbättringarna finns kvar under besöket. Det går inte att ångra.`)) return;
     await db.deletePlace(id);
     go(`#/besok/${place.visitId}`);
   };
 }
 
 // =====================================================================
-// Ett kärl: typ, storlek, antal, innehåll, fyllnad, flaggor, bilder, idéer, anteckning
+// Ett kärl
 // =====================================================================
 function choiceGroup(field, options, value, placeholder) {
   const custom = value && !options.includes(value) ? value : '';
@@ -445,6 +476,95 @@ function bindChoices(root, obj, store) {
   });
 }
 
+// ---------- Materialval: flera material, sök, egna ----------
+const matChip = (item, m) =>
+  `<button class="chip ${item.materials.includes(m) ? 'on' : ''}" data-mat="${esc(m)}">${esc(m)}</button>`;
+
+// Sökträffar medan man skriver (bara den här delen ritas om, så tangentbordet stannar kvar).
+function matResults(item, query) {
+  const q = query.trim().toLowerCase();
+  if (!q) return '';
+  const kind = typeOf(item.type).kind;
+  const all = [...new Set([...groupsFor(kind).flatMap((g) => g.items), ...customMaterials()])];
+  const hits = all.filter((m) => m.toLowerCase().includes(q)).slice(0, 14);
+  const exact = all.some((m) => m.toLowerCase() === q);
+  return `${hits.map((m) => matChip(item, m)).join('')}
+    ${exact ? '' : `<button class="chip add-own" data-own>${I.plus} Lägg till "${esc(query.trim())}"</button>`}`;
+}
+
+function materialPicker(item, showAll = false) {
+  const kind = typeOf(item.type).kind;
+  const chip = (m) => matChip(item, m);
+  const mine = customMaterials().filter((m) => fitsKind(m, kind));
+  const common = [...new Set([...COMMON[kind], ...mine])].filter((m) => !item.materials.includes(m));
+
+  return `
+    <div class="mat-selected">
+      ${item.materials.length ? item.materials.map((m) =>
+        `<button class="chip on removable" data-remove="${esc(m)}">${esc(m)} ${I.close}</button>`).join('')
+        : '<span class="muted">Inget valt än – tryck på ett material nedan, eller sök.</span>'}
+    </div>
+    <div class="mat-search">
+      <input class="input" id="matSearch" placeholder="Sök eller skriv eget material …" autocomplete="off" enterkeyhint="done">
+    </div>
+    <div class="mat-results" id="matResults"></div>
+    <div class="mat-label">${kind === 'fa' ? 'Vanligt farligt avfall' : 'Vanliga material'}</div>
+    <div class="chips">${common.map(chip).join('')}</div>
+    <button class="btn ghost mat-all-btn" data-mat-all>${showAll ? 'Dölj alla material' : 'Visa alla material'}</button>
+    ${showAll ? `<div class="mat-all">${groupsFor(kind).map((g) => `
+      <details><summary>${esc(g.name)}</summary><div class="chips">${g.items.map(chip).join('')}</div></details>`).join('')}
+    </div>` : ''}`;
+}
+
+function mountMaterialPicker(box, item, { showAll = false, focus = false } = {}) {
+  box.innerHTML = materialPicker(item, showAll);
+  const rerender = (opts) => mountMaterialPicker(box, item, { showAll, ...opts });
+  const add = (m) => {
+    m = m.trim();
+    if (!m) return;
+    const kind = typeOf(item.type).kind;
+    const known = MATERIAL_GROUPS.flatMap((g) => g.items).find((x) => x.toLowerCase() === m.toLowerCase());
+    m = known || m;
+    if (!item.materials.includes(m)) item.materials = [...item.materials, m];
+    if (!known) rememberCustom(m);
+    if (known && !fitsKind(known, kind)) toast(`Obs: ${known} hör normalt inte hemma i ${typeOf(item.type).label.toLowerCase()}`);
+    saveNow('items', item);
+  };
+  const bindChips = (root) => root.querySelectorAll('[data-mat]').forEach((b) => {
+    b.onclick = () => {
+      const m = b.dataset.mat;
+      if (item.materials.includes(m)) {
+        item.materials = item.materials.filter((x) => x !== m);
+        saveNow('items', item);
+      } else add(m);
+      rerender();
+    };
+  });
+  bindChips(box);
+  box.querySelectorAll('[data-remove]').forEach((b) => {
+    b.onclick = () => {
+      item.materials = item.materials.filter((x) => x !== b.dataset.remove);
+      saveNow('items', item);
+      rerender();
+    };
+  });
+  const input = box.querySelector('#matSearch');
+  const results = box.querySelector('#matResults');
+  input.oninput = () => {
+    results.innerHTML = matResults(item, input.value);
+    bindChips(results);
+    results.querySelector('[data-own]')?.addEventListener('click', () => { add(input.value); rerender(); });
+  };
+  input.onkeydown = (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    add(input.value);
+    rerender({ focus: true });
+  };
+  box.querySelector('[data-mat-all]').onclick = () => rerender({ showAll: !showAll });
+  if (focus) box.querySelector('#matSearch').focus();
+}
+
 async function itemView(id) {
   const item = await db.get('items', id);
   if (!item) return go('#/');
@@ -453,14 +573,7 @@ async function itemView(id) {
   const photos = d.photos.filter((p) => p.itemId === id);
   const ideas = d.ideas.filter((x) => x.itemId === id);
   const t = typeOf(item.type);
-
-  // Miljöskåp: flera sorters farligt avfall. Övriga: ett material.
-  const contentSection = t.collects ? `
-    ${sectionHead('Vad samlas här?', '<span class="muted">Välj flera</span>')}
-    <div class="chips">${HAZARDOUS.map((h) =>
-      `<button class="chip ${item.contents.includes(h) ? 'on' : ''}" data-content="${esc(h)}">${esc(h)}</button>`).join('')}</div>
-    <input class="input" style="margin-top:10px" data-field="contentsNote" value="${esc(item.contentsNote)}" placeholder="Annat – skriv här" autocomplete="off">`
-    : `${sectionHead('Vad ligger i?')}${choiceGroup('material', MATERIALS, item.material, 'Annat – skriv här')}`;
+  const hasMore = item.frequency || item.supplier || item.notes;
 
   setTop({ back: `#/plats/${item.placeId}`, title: itemLabel(item), sub: place?.name });
   main.innerHTML = `
@@ -469,8 +582,7 @@ async function itemView(id) {
 
     <div class="section">
       ${sectionHead('Typ')}
-      <div class="type-grid">${TYPES.map((x) =>
-        `<button class="type ${x.key === item.type ? 'on' : ''}" data-type="${x.key}">${x.icon}<span>${x.tile || x.label}</span></button>`).join('')}</div>
+      ${typeGrid(item.type)}
     </div>
 
     ${item.type ? `<div class="section">
@@ -487,7 +599,10 @@ async function itemView(id) {
       </div>
     </div>
 
-    <div class="section">${contentSection}</div>
+    <div class="section">
+      ${sectionHead('Vad ligger i?', '<span class="muted">Välj ett eller flera</span>')}
+      <div id="matBox"></div>
+    </div>
 
     <div class="section">
       ${sectionHead('Hur fullt?')}
@@ -503,58 +618,53 @@ async function itemView(id) {
         `<button class="chip flag ${RISK_FLAGS.includes(f) ? 'risk' : ''} ${item.flags.includes(f) ? 'on' : ''}" data-flag="${esc(f)}">${esc(f)}</button>`).join('')}</div>
     </div>
 
-    <div class="section">
-      ${sectionHead('Tömning idag <span class="muted" style="font-size:18px">(valfritt)</span>')}
-      ${choiceGroup('frequency', FREQS, item.frequency, 'Annat – t.ex. 2 gånger/vecka')}
-    </div>
+    <details class="section more" ${hasMore ? 'open' : ''}>
+      <summary><h2>Mer <span class="muted">(valfritt)</span></h2><span class="muted">Tömning, leverantör, anteckning</span></summary>
+      <div class="sub-section">
+        <h3>Tömning idag</h3>
+        ${choiceGroup('frequency', FREQS, item.frequency, 'Annat – t.ex. 2 gånger/vecka')}
+      </div>
+      <div class="sub-section">
+        <h3>Leverantör idag</h3>
+        ${choiceGroup('supplier', SUPPLIERS, item.supplier, 'Skriv namn på leverantör')}
+      </div>
+      <div class="sub-section">
+        <h3>Anteckning</h3>
+        <textarea class="input" data-field="notes" placeholder="Det du vill komma ihåg om just det här kärlet …">${esc(item.notes)}</textarea>
+      </div>
+    </details>
 
     <div class="section">
-      ${sectionHead('Leverantör idag <span class="muted" style="font-size:18px">(valfritt)</span>')}
-      ${choiceGroup('supplier', SUPPLIERS, item.supplier, 'Skriv namn på leverantör')}
-    </div>
-
-    <div class="section">
-      ${sectionHead('Idéer om kärlet')}
+      ${sectionHead('Förbättringar för kärlet')}
       ${ideasHtml(ideas, d.places, d.items)}
-      <button class="btn ghost block add-idea" id="addIdea">${I.plus} Ny idé om det här kärlet</button>
-    </div>
-
-    <div class="section">
-      ${sectionHead('Anteckning')}
-      <textarea class="input" data-field="notes" placeholder="Det du vill komma ihåg om just det här kärlet …">${esc(item.notes)}</textarea>
-    </div>
-
-    <div class="section">
-      <button class="btn big block" id="done">${I.check} Klar – tillbaka till ${esc(place?.name || 'platsen')}</button>
+      <button class="btn ghost block add-idea" id="addIdea">${I.plus} Ny förbättring för kärlet</button>
     </div>
 
     <div class="danger-zone">
       <button class="btn danger" id="delItem">${I.trash} Ta bort kärlet</button>
     </div>`;
 
+  setBottom(`Klar – tillbaka till ${place?.name || 'platsen'}`, () => go(`#/plats/${item.placeId}`));
   bindFields(main, item, 'items');
   bindChoices(main, item, 'items');
   bindPhotos(main, photos, { visitId: item.visitId, placeId: item.placeId, itemId: id });
   bindIdeas(main, ideas, d.items);
+  bindTypeGrid(main);
+  mountMaterialPicker(main.querySelector('#matBox'), item);
 
-  // Byte av typ visar nya storleksval, så sidan ritas om.
+  // Byte av typ: nya storleksval, och material som inte passar (t.ex. wellpapp i miljöskåp) tas bort.
   main.querySelectorAll('[data-type]').forEach((b) => {
     b.onclick = async () => {
       if (item.type === b.dataset.type) return;
       item.type = b.dataset.type;
       item.size = '';
-      if (typeOf(item.type).collects && !item.material) item.material = 'Farligt avfall';
+      const nt = typeOf(item.type);
+      const before = item.materials.length;
+      item.materials = item.materials.filter((m) => fitsKind(m, nt.kind));
+      if (!item.materials.length && nt.defaults) item.materials = [...nt.defaults];
+      if (item.materials.length < before) toast('Material som inte passar den nya typen togs bort');
       await saveNow('items', item);
       refresh();
-    };
-  });
-
-  main.querySelectorAll('[data-content]').forEach((b) => {
-    b.onclick = () => {
-      const c = b.dataset.content;
-      item.contents = item.contents.includes(c) ? item.contents.filter((x) => x !== c) : [...item.contents, c];
-      b.classList.toggle('on', item.contents.includes(c));
-      saveNow('items', item);
     };
   });
 
@@ -581,9 +691,8 @@ async function itemView(id) {
   });
 
   main.querySelector('#addIdea').onclick = () => newIdea({ visitId: item.visitId, placeId: item.placeId, itemId: id });
-  main.querySelector('#done').onclick = () => go(`#/plats/${item.placeId}`);
   main.querySelector('#delItem').onclick = async () => {
-    if (!confirm('Ta bort kärlet och dess bilder? Idéer om kärlet finns kvar under platsen.')) return;
+    if (!confirm('Ta bort kärlet och dess bilder? Förbättringar för kärlet finns kvar under platsen.')) return;
     await db.deleteItem(id);
     go(`#/plats/${item.placeId}`);
   };
@@ -607,6 +716,7 @@ async function render({ animate }) {
   const hash = location.hash || '#/';
   const y = window.scrollY;
   revokeUrls();
+  setBottom(null);
   if (!hash.startsWith('#/visa/')) leavePresent();
   for (const [re, view] of ROUTES) {
     const m = hash.match(re);

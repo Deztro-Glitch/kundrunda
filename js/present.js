@@ -1,13 +1,22 @@
-// Visningsläge: sammanställning för kunden i helskärm. Svep mellan sidorna. Kan sparas som PDF.
+// Visningsläge för kunden i helskärm, med två flikar:
+//  • Nuläge – det du har registrerat (översikt, platser, det du såg). Svep mellan sidorna.
+//  • Förbättringar – fylls i tillsammans med kunden, direkt här.
+// Allt kan sparas som PDF.
 import * as db from './db.js';
 import { typeOf, itemLabel, contentText, FILLS, RISK_FLAGS } from './data.js';
-import { esc, prettyDate, plural, photoUrl, openViewer, go } from './util.js';
+import { esc, prettyDate, photoUrl, revokeUrls, openViewer, go, toast } from './util.js';
 import { I } from './icons.js';
 
 let showNotes = false; // anteckningar är dina egna – dolda för kunden om du inte slår på dem
 
 const count = (it) => Number(it.count) || 1;
-const groupKey = (it) => (typeOf(it.type).collects ? 'Farligt avfall' : it.material || 'Ej angivet');
+// Gruppering i översikten: ett material = det materialet. Flera = blandat.
+const groupKey = (it) => {
+  const m = it.materials || [];
+  if (m.length === 1) return m[0];
+  if (!m.length) return 'Ej angivet';
+  return typeOf(it.type).kind === 'fa' ? 'Farligt avfall, blandat' : m.join(' + ');
+};
 
 function fillGauge(key) {
   const f = FILLS.find((x) => x.key === key);
@@ -15,8 +24,22 @@ function fillGauge(key) {
   return `<span class="gauge ${f.over ? 'over' : ''}"><i style="width:${f.over ? 100 : f.pct}%"></i></span><span>${f.label}</span>`;
 }
 
+// Sparar förbättringar medan man skriver.
+const timers = new Map();
+function saveIdeaSoon(idea) {
+  clearTimeout(timers.get(idea.id)?.t);
+  timers.set(idea.id, { idea, t: setTimeout(() => { timers.delete(idea.id); db.put('ideas', idea); }, 400) });
+}
+async function flushIdeas() {
+  const list = [...timers.values()];
+  timers.clear();
+  for (const { idea, t } of list) { clearTimeout(t); await db.put('ideas', idea); }
+}
+
 export async function presentView(visitId, { topbar, main, startAt = 0 }) {
   leavePresent();
+  await flushIdeas();
+  revokeUrls();
   const d = await db.loadVisit(visitId);
   if (!d) return go('#/');
   const { visit, places, items, photos, ideas } = d;
@@ -37,7 +60,6 @@ export async function presentView(visitId, { topbar, main, startAt = 0 }) {
         <div class="stats">
           <div><b>${places.length}</b><span>${places.length === 1 ? 'plats' : 'platser'}</span></div>
           <div><b>${total}</b><span>kärl och behållare</span></div>
-          <div><b>${realIdeas.length}</b><span>${realIdeas.length === 1 ? 'idé' : 'idéer'}</span></div>
         </div>
       </div>
     </section>`;
@@ -46,11 +68,12 @@ export async function presentView(visitId, { topbar, main, startAt = 0 }) {
   const groups = new Map();
   for (const it of items) {
     const k = groupKey(it);
-    if (!groups.has(k)) groups.set(k, { total: 0, lines: new Map(), places: new Set() });
+    if (!groups.has(k)) groups.set(k, { total: 0, lines: new Map(), places: new Set(), details: new Set() });
     const g = groups.get(k);
     g.total += count(it);
     g.lines.set(itemLabel(it), (g.lines.get(itemLabel(it)) || 0) + count(it));
     g.places.add(placeName(it.placeId));
+    if (k === 'Farligt avfall, blandat') it.materials.forEach((m) => g.details.add(m));
   }
   const sorted = [...groups.entries()].sort((a, b) =>
     (a[0] === 'Ej angivet') - (b[0] === 'Ej angivet') || b[1].total - a[1].total);
@@ -64,6 +87,7 @@ export async function presentView(visitId, { topbar, main, startAt = 0 }) {
           <div class="mat-row">
             <div class="mat-name">${esc(name)}</div>
             <div class="mat-lines">${[...g.lines.entries()].map(([l, n]) => `<span>${n} × ${esc(l)}</span>`).join('')}
+              ${g.details.size ? `<small>${[...g.details].map(esc).join(', ')}</small>` : ''}
               <small>${[...g.places].filter(Boolean).map(esc).join(' · ')}</small></div>
             <div class="mat-total">${g.total}</div>
           </div>`).join('')}
@@ -82,10 +106,9 @@ export async function presentView(visitId, { topbar, main, startAt = 0 }) {
     // Bilder på platsen i galleriet. Kärlens bilder visas vid kärlen – utom när platsen saknar egna bilder.
     const placeOnly = pPhotos.filter((ph) => !ph.itemId);
     const [hero, ...rest] = placeOnly.length ? placeOnly : pPhotos.slice(0, 1);
-    const pIdeas = realIdeas.filter((x) => x.placeId === p.id);
     return `
       <section class="slide"><div class="slide-inner">
-        <div class="eyebrow">Plats ${i + 1} av ${places.length}</div>
+        <div class="eyebrow">Nuläge · Plats ${i + 1} av ${places.length}</div>
         <h2 class="slide-title">${esc(p.name)}</h2>
         <div class="place-layout ${hero ? '' : 'no-photo'}">
           ${hero ? `<div class="gallery">
@@ -115,16 +138,10 @@ export async function presentView(visitId, { topbar, main, startAt = 0 }) {
           </div>
         </div>
         ${showNotes && p.notes ? `<div class="note big">${esc(p.notes)}</div>` : ''}
-        ${pIdeas.length ? `<div class="place-ideas"><h3>${I.idea} Det här pratade vi om här</h3>
-          <ul>${pIdeas.map((x) => `<li>${esc(x.text)}</li>`).join('')}</ul></div>` : ''}
       </div></section>`;
   });
 
-  // ---------- Det här pratade vi om ----------
-  const ideaContext = (x) => {
-    const it = items.find((i) => i.id === x.itemId);
-    return [placeName(x.placeId), it && itemLabel(it)].filter(Boolean).join(' › ');
-  };
+  // ---------- Det här såg vi (flaggor) ----------
   const flagMap = new Map();
   for (const it of items) {
     for (const f of it.flags) {
@@ -132,21 +149,53 @@ export async function presentView(visitId, { topbar, main, startAt = 0 }) {
       flagMap.get(f).push(`${placeName(it.placeId)}: ${itemLabel(it)}`);
     }
   }
-  const talked = `
+  const seen = flagMap.size || (showNotes && visit.notes) ? `
     <section class="slide"><div class="slide-inner">
-      <div class="eyebrow">Framåt</div>
-      <h2 class="slide-title">Det här pratade vi om</h2>
-      ${realIdeas.length ? `<ol class="idea-big">${realIdeas.map((x) => `
-        <li><div>${esc(x.text).replace(/\n/g, '<br>')}</div>${ideaContext(x) ? `<small>${esc(ideaContext(x))}</small>` : ''}</li>`).join('')}
-      </ol>` : '<p class="muted">Inga idéer antecknade.</p>'}
-      ${flagMap.size ? `<h3 class="sub-title">Det här såg vi</h3>
-      <div class="flag-sum">${[...flagMap.entries()].map(([f, where]) => `
+      <div class="eyebrow">Nuläge</div>
+      <h2 class="slide-title">Det här såg vi</h2>
+      ${flagMap.size ? `<div class="flag-sum">${[...flagMap.entries()].map(([f, where]) => `
         <div class="flag-row"><span class="tag ${RISK_FLAGS.includes(f) ? 'risk' : ''}">${esc(f)}</span>
         <span>${where.map(esc).join(' · ')}</span></div>`).join('')}</div>` : ''}
       ${showNotes && visit.notes ? `<h3 class="sub-title">Anteckningar</h3><div class="note big">${esc(visit.notes)}</div>` : ''}
+    </div></section>` : '';
+
+  // ---------- Förbättringar (fylls i med kunden) ----------
+  const ctxLabel = (x) => {
+    const it = items.find((i) => i.id === x.itemId);
+    return [placeName(x.placeId), it && itemLabel(it)].filter(Boolean).join(' › ') || 'Hela verksamheten';
+  };
+  const placeOptions = (x) => `<option value="">Hela verksamheten</option>${places.map((p) =>
+    `<option value="${p.id}" ${x.placeId === p.id && !x.itemId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
+    ${x.itemId ? `<option value="keep" selected>${esc(ctxLabel(x))}</option>` : ''}`;
+  const improve = `
+    <section class="slide improve"><div class="slide-inner">
+      <div class="eyebrow">Framåt</div>
+      <h2 class="slide-title">Förbättringar</h2>
+      ${realIdeas.length ? `<ol class="idea-big">${realIdeas.map((x) => `
+        <li data-idea="${x.id}">
+          <textarea class="imp-edit no-print" rows="1">${esc(x.text)}</textarea>
+          <div class="print-only">${esc(x.text).replace(/\n/g, '<br>')}</div>
+          <div class="imp-foot">
+            <small class="print-only">${esc(ctxLabel(x))}</small>
+            <select class="imp-ctx no-print">${placeOptions(x)}</select>
+            <button class="imp-del no-print" data-del aria-label="Ta bort">${I.close}</button>
+          </div>
+        </li>`).join('')}</ol>`
+        : '<p class="muted imp-empty">Inga förbättringar än. Skriv in vad ni vill förbättra här nedanför.</p>'}
+      <div class="imp-add no-print">
+        <h3>Ny förbättring</h3>
+        <textarea class="input" id="impNew" rows="2" placeholder="Vad vill ni ska bli bättre?"></textarea>
+        <div class="chips" id="impPlace">
+          <button class="chip on" data-place="">Hela verksamheten</button>
+          ${places.map((p) => `<button class="chip" data-place="${p.id}">${esc(p.name)}</button>`).join('')}
+        </div>
+        <button class="btn big" id="impAdd">${I.plus} Lägg till</button>
+      </div>
     </div></section>`;
 
-  const slides = [cover, today, ...placeSlides, talked];
+  const nowSlides = [cover, today, ...placeSlides, seen].filter(Boolean);
+  const slides = [...nowSlides, improve];
+  const improveIndex = slides.length - 1;
 
   // ---------- Sidan ----------
   document.body.classList.add('presenting');
@@ -155,16 +204,21 @@ export async function presentView(visitId, { topbar, main, startAt = 0 }) {
     <div class="deck">${slides.join('')}</div>
     <div class="deck-ui">
       <button class="iconbtn deck-close" data-close aria-label="Stäng">${I.close}</button>
+      <div class="deck-tabs" role="tablist">
+        <button data-tab="now">Nuläge</button>
+        <button data-tab="improve">${I.idea} Förbättringar${realIdeas.length ? ` <b>${realIdeas.length}</b>` : ''}</button>
+      </div>
       <div class="deck-actions">
-        <button class="btn ghost" data-notes>${I.eye} ${showNotes ? 'Dölj anteckningar' : 'Visa anteckningar'}</button>
-        <button class="btn" data-pdf>${I.doc} Spara som PDF</button>
+        <button class="btn ghost" data-notes aria-label="Anteckningar">${I.eye}<span>${showNotes ? 'Dölj anteckningar' : 'Visa anteckningar'}</span></button>
+        <button class="btn" data-pdf>${I.doc}<span>PDF</span></button>
       </div>
       <button class="deck-nav prev" data-prev aria-label="Föregående">${I.prev}</button>
       <button class="deck-nav next" data-next aria-label="Nästa">${I.next}</button>
-      <div class="dots">${slides.map((_, i) => `<button data-dot="${i}" aria-label="Sida ${i + 1}"></button>`).join('')}</div>
+      <div class="dots">${slides.map((_, i) => `<button data-dot="${i}" class="${i === improveIndex ? 'dot-improve' : ''}" aria-label="Sida ${i + 1}"></button>`).join('')}</div>
     </div>`;
 
   const deck = main.querySelector('.deck');
+  const ui = main.querySelector('.deck-ui');
   const dots = [...main.querySelectorAll('[data-dot]')];
   const index = () => Math.round(deck.scrollLeft / deck.clientWidth);
   const show = (i, smooth = true) => {
@@ -175,33 +229,72 @@ export async function presentView(visitId, { topbar, main, startAt = 0 }) {
   const mark = () => {
     const i = index();
     current = i;
-    dots.forEach((d, j) => d.classList.toggle('on', j === i));
+    dots.forEach((dd, j) => dd.classList.toggle('on', j === i));
     main.querySelector('[data-prev]').disabled = i === 0;
     main.querySelector('[data-next]').disabled = i === slides.length - 1;
+    main.querySelector('[data-tab="now"]').classList.toggle('on', i < improveIndex);
+    main.querySelector('[data-tab="improve"]').classList.toggle('on', i === improveIndex);
   };
   deck.addEventListener('scroll', () => requestAnimationFrame(mark), { passive: true });
+  requestAnimationFrame(() => { show(startAt, false); mark(); });
   // Tona ner knapparna när man skrollar ner på en sida, så de inte skymmer innehållet.
-  const ui = main.querySelector('.deck-ui');
   main.querySelectorAll('.slide').forEach((s) => s.addEventListener('scroll', () => {
     ui.classList.toggle('dim', s.scrollTop > 40);
   }, { passive: true }));
-  requestAnimationFrame(() => { show(startAt, false); mark(); });
 
   main.querySelector('[data-prev]').onclick = () => show(index() - 1);
   main.querySelector('[data-next]').onclick = () => show(index() + 1);
-  dots.forEach((d) => { d.onclick = () => show(Number(d.dataset.dot)); });
+  dots.forEach((dd) => { dd.onclick = () => show(Number(dd.dataset.dot)); });
+  main.querySelector('[data-tab="now"]').onclick = () => show(current >= improveIndex ? 0 : current);
+  main.querySelector('[data-tab="improve"]').onclick = () => show(improveIndex);
   main.querySelector('[data-close]').onclick = () => go(`#/besok/${visitId}`);
-  main.querySelector('[data-notes]').onclick = () => {
-    showNotes = !showNotes;
-    presentView(visitId, { topbar, main, startAt: index() });
-  };
+  const rerender = () => presentView(visitId, { topbar, main, startAt: index() });
+  main.querySelector('[data-notes]').onclick = () => { showNotes = !showNotes; rerender(); };
   main.querySelector('[data-pdf]').onclick = () => window.print();
   main.querySelectorAll('[data-photo]').forEach((b) => {
     b.onclick = () => openViewer(photos.find((p) => p.id === b.dataset.photo));
   });
 
-  // Piltangenter (tangentbord kopplat till iPaden).
+  // ---------- Förbättringar: redigera, koppla, ta bort, lägga till ----------
+  const grow = (ta) => { ta.style.height = 'auto'; ta.style.height = `${ta.scrollHeight}px`; };
+  main.querySelectorAll('.improve [data-idea]').forEach((li) => {
+    const idea = ideas.find((x) => x.id === li.dataset.idea);
+    const ta = li.querySelector('.imp-edit');
+    requestAnimationFrame(() => grow(ta));
+    ta.oninput = () => { grow(ta); idea.text = ta.value; saveIdeaSoon(idea); li.querySelector('.print-only').textContent = ta.value; };
+    li.querySelector('.imp-ctx').onchange = async (e) => {
+      if (e.target.value === 'keep') return;
+      idea.placeId = e.target.value || null;
+      idea.itemId = null;
+      await db.put('ideas', idea);
+      rerender();
+    };
+    li.querySelector('[data-del]').onclick = async () => {
+      if (!confirm('Ta bort förbättringen?')) return;
+      await db.del('ideas', idea.id);
+      rerender();
+    };
+  });
+  let newPlace = '';
+  main.querySelectorAll('#impPlace [data-place]').forEach((c) => {
+    c.onclick = () => {
+      newPlace = c.dataset.place;
+      main.querySelectorAll('#impPlace [data-place]').forEach((x) => x.classList.toggle('on', x === c));
+    };
+  });
+  const newText = main.querySelector('#impNew');
+  newText.oninput = () => grow(newText);
+  main.querySelector('#impAdd').onclick = async () => {
+    const text = newText.value.trim();
+    if (!text) { newText.focus(); return; }
+    await db.put('ideas', { id: db.uid(), visitId, text, placeId: newPlace || null, itemId: null });
+    toast('Förbättringen är tillagd');
+    rerender();
+  };
+
+  // Piltangenter (tangentbord kopplat till iPaden) – men inte när man skriver.
   const onKey = (e) => {
+    if (e.target.matches('textarea, input, select')) return;
     if (e.key === 'ArrowRight') show(current + 1);
     if (e.key === 'ArrowLeft') show(current - 1);
   };
@@ -217,6 +310,7 @@ export async function presentView(visitId, { topbar, main, startAt = 0 }) {
 
 let detach = null;
 export function leavePresent() {
+  flushIdeas();
   detach?.();
   detach = null;
   document.body.classList.remove('presenting');

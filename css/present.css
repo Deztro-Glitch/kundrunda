@@ -178,3 +178,100 @@ body.presenting main { max-width: none; padding: 0; animation: none; }
   .p-item, .mat-row, .idea-big li, .place-ideas { break-inside: avoid; }
   .place-layout { grid-template-columns: 1.1fr 1fr !important; }
 }
+
+/* ---------- Klar-knapp längst ner ---------- */
+.bottombar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+  padding: 12px 16px calc(env(safe-area-inset-bottom) + 12px);
+  background: linear-gradient(180deg, rgba(244, 247, 245, 0) 0%, rgba(244, 247, 245, .96) 30%);
+}
+.bottombar[hidden] { display: none; }
+.bottombar .btn { max-width: 948px; margin: 0 auto; display: flex; box-shadow: 0 6px 20px rgba(0, 92, 41, .25); }
+body.has-bottombar main { padding-bottom: calc(env(safe-area-inset-bottom) + 130px); }
+body.presenting .bottombar { display: none; }
+
+/* ---------- Fler typer ---------- */
+.type.more-toggle { border-style: dashed; color: var(--muted); }
+.type.more-toggle svg { width: 36px; height: 36px; }
+.more-types { margin-top: 10px; }
+.more-types[hidden] { display: none; }
+
+/* ---------- Mer (valfritt) ---------- */
+details.more { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 0 20px; }
+details.more > summary {
+  list-style: none; cursor: pointer; min-height: 72px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+}
+details.more > summary::-webkit-details-marker { display: none; }
+details.more > summary::after { content: '+'; margin-left: auto; font-size: 32px; color: var(--green); font-weight: 600; }
+details.more[open] > summary::after { content: '–'; }
+details.more > summary h2 { color: var(--green-dark); }
+details.more h2 .muted { font-size: 18px; }
+.sub-section { padding: 6px 0 20px; }
+.sub-section h3 { color: var(--green-dark); margin-bottom: 10px; }
+
+/* ---------- Materialval ---------- */
+.mat-selected { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; min-height: 52px; align-items: center; }
+.chip.removable svg { width: 18px; height: 18px; margin-left: 2px; opacity: .85; }
+.mat-search { margin-bottom: 10px; }
+.mat-results { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+.mat-results:empty { display: none; }
+.chip.add-own { border-style: dashed; border-color: var(--green); color: var(--green-dark); }
+.chip.add-own svg { width: 20px; height: 20px; }
+.mat-label { font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 6px 0 8px; }
+.mat-all-btn { margin-top: 14px; }
+.mat-all { margin-top: 12px; display: grid; gap: 8px; }
+.mat-all details { background: var(--surface); border: 2px solid var(--line); border-radius: var(--radius-sm); padding: 0 14px; }
+.mat-all summary { min-height: 56px; display: flex; align-items: center; font-weight: 600; font-size: 18px; cursor: pointer; }
+.mat-all details[open] { padding-bottom: 14px; }
+
+/* ---------- Flikar i visningsläget ---------- */
+.deck-tabs {
+  position: fixed; z-index: 10; top: calc(env(safe-area-inset-top) + 16px); left: 50%; transform: translateX(-50%);
+  display: flex; gap: 4px; padding: 4px; border-radius: 99px;
+  background: rgba(17, 26, 21, .6); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+.deck-tabs button {
+  min-height: 48px; padding: 0 20px; border: 0; border-radius: 99px; background: transparent; color: #fff;
+  font-weight: 600; font-size: 17px; display: inline-flex; align-items: center; gap: 8px; white-space: nowrap;
+}
+.deck-tabs button svg { width: 20px; height: 20px; }
+.deck-tabs button b { background: var(--green); border-radius: 99px; padding: 0 8px; font-size: 14px; line-height: 22px; }
+.deck-tabs button.on { background: #fff; color: var(--green-dark); }
+.deck-tabs button.on b { color: #fff; }
+.deck-actions .btn { padding: 0 16px; }
+.dots button.dot-improve::after { background: #8fd3a8; }
+@media (max-width: 900px) {
+  .deck-actions .btn span { display: none; }
+  .deck-actions .btn { width: 56px; padding: 0; }
+}
+
+/* ---------- Förbättringar i visningsläget ---------- */
+.improve .idea-big li { padding-right: 70px; }
+.imp-edit {
+  width: 100%; border: 0; background: transparent; resize: none; overflow: hidden;
+  font: inherit; font-size: 22px; line-height: 1.35; color: var(--ink); padding: 0; outline: none; min-height: 30px;
+}
+.imp-edit:focus { background: rgba(255, 255, 255, .6); border-radius: 8px; box-shadow: 0 0 0 6px rgba(255, 255, 255, .6); }
+.imp-foot { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.imp-ctx {
+  -webkit-appearance: none; appearance: none; border: 2px solid var(--green-tint-2); background: #fff;
+  border-radius: 99px; min-height: 40px; padding: 0 16px; font: inherit; font-size: 15px; font-weight: 600;
+  color: var(--green-dark); text-transform: uppercase; letter-spacing: .04em; max-width: 100%;
+}
+.imp-del {
+  position: absolute; right: 14px; top: 14px; width: 48px; height: 48px; border-radius: 50%;
+  border: 0; background: rgba(255, 255, 255, .7); color: var(--muted); display: grid; place-items: center;
+}
+.imp-del svg { width: 22px; height: 22px; }
+.imp-add { margin-top: 24px; background: var(--surface); border: 2px dashed var(--green); border-radius: var(--radius); padding: 20px; display: grid; gap: 14px; }
+.imp-add h3 { color: var(--green-dark); }
+.imp-add textarea.input { min-height: 90px; font-size: 21px; }
+.imp-add .btn { justify-self: start; }
+.imp-empty { font-size: 20px; }
+@media screen { .print-only { display: none !important; } }
+
+@media print {
+  .no-print, .imp-add, .deck-tabs, .bottombar { display: none !important; }
+  .print-only { display: block !important; }
+  .improve .idea-big li { padding-right: 22px; }
+}
