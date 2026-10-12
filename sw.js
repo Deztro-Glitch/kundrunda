@@ -1,6 +1,6 @@
 // Service worker: sparar appens filer i iPaden så att den fungerar utan nät.
 // Höj VERSION när appen uppdateras, så hämtas de nya filerna.
-const VERSION = 'kundrunda-v9';
+const VERSION = 'kundrunda-v10';
 const FILES = [
   './',
   './index.html',

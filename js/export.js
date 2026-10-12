@@ -39,6 +39,7 @@ export async function buildJson(visitId) {
       contentText: contentText(it),
       fillLabel: FILLS.find((f) => f.key === it.fill)?.label || '',
       costText: costText(it),
+      parts: (it.parts || []).map((x) => ({ ...x, label: x.type ? itemLabel(x) : '' })),
     })),
     ideas: d.ideas.filter(ideaHasContent).map((x) => ({
       ...strip(x),

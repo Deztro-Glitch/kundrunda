@@ -58,7 +58,21 @@ export const PLACE_SUGGESTIONS = [
 ];
 
 // Vad som ligger i, som text.
-export const contentText = (it) => (it.materials || []).join(', ');
+export const contentText = (it) => (it.type === 'miljoskap' && it.parts?.length ? partsText(it) : (it.materials || []).join(', '));
+
+// ---------- Behållare i ett miljöskåp (fat, box 21 L …), var och en med ett material ----------
+export const PART_TYPES = ['fat', 'atervinningsbox', 'swedebox', 'ibc', 'batteribox', 'lysror', 'annat'];
+export const hasParts = (it) => it.type === 'miljoskap';
+export const partsText = (it) => (it.parts || [])
+  .map((p) => `${Number(p.count) || 1} × ${p.type ? itemLabel(p) : 'behållare'}${p.materials?.length ? ` – ${p.materials.join(', ')}` : ''}`).join(', ');
+export const newPart = (type = '') => ({
+  id: (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)),
+  type, size: '', regId: '', regLabel: '', customName: '', count: 1, materials: [...(typeOf(type).defaults || [])], kind: 'fa',
+});
+// Skåpets material = allt som ligger i behållarna i det (används i sammanställning och offert).
+export function syncParts(it) {
+  if (hasParts(it) && it.parts.length) it.materials = [...new Set(it.parts.flatMap((p) => p.materials || []))];
+}
 
 // Gör om kärl som sparades med äldre versioner av appen.
 const LEGACY_TYPES = { k190: '190 L', k370: '370 L', k660: '660 L' };
@@ -78,6 +92,11 @@ export function normalizeItem(it) {
       .filter((m) => !(m === 'Farligt avfall' && (it.contents || []).length));
     it.materials = [...new Set(old.map((m) => LEGACY_MATERIALS[m] || m))];
     delete it.material; delete it.contents; delete it.contentsNote;
+  }
+  if (!Array.isArray(it.parts)) {
+    // Miljöskåp från äldre versioner: varje material blir en behållare i skåpet (sparas när kärlet öppnas).
+    it.parts = it.type === 'miljoskap' && it.materials.length ? it.materials.map((m) => ({ ...newPart(''), materials: [m] })) : [];
+    if (it.parts.length) it.partsMigrated = true;
   }
   return it;
 }

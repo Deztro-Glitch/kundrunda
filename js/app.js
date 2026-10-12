@@ -6,6 +6,7 @@ import { I } from './icons.js';
 import {
   typeOf, itemLabel, contentText, costText, MATERIAL_UNITS, FILLS, FREQS, SUPPLIERS, FLAGS, RISK_FLAGS,
   PLACE_SUGGESTIONS, ACTIONS, needsTarget, proposesContainer, ideaHasContent, ideaSummary,
+  PART_TYPES, hasParts, newPart, syncParts,
 } from './data.js';
 import { getRegister, parseRegister, saveRegister, clearRegister } from './register.js';
 import { esc, today, MONTHS, prettyDate, plural, go, photoUrl, revokeUrls, toast } from './util.js';
@@ -386,10 +387,20 @@ async function itemView(id) {
       ${countStepper(item.count)}
     </div>
 
-    <div class="section">
-      ${sectionHead('Vad ligger i?', '<span class="muted">Välj ett eller flera</span>')}
+    ${hasParts(item) ? `<div class="section parts-zone">
+      ${sectionHead('Vad står i skåpet?', '<span class="muted">Fat, boxar och annat</span>')}
+      ${item.parts.length ? `<div class="part-list">${item.parts.map((p) => `
+        <button class="part" data-part="${p.id}">
+          <span class="pi">${typeOf(p.type).icon}</span>
+          <span class="pt"><b>${Number(p.count) || 1} × ${esc(p.type ? itemLabel(p) : 'Typ ej vald')}</b><small>${esc(p.materials.join(', ') || 'Inget material valt')}</small></span>
+          <span class="chev">${I.chev}</span>
+        </button>`).join('')}</div>` : '<p class="hint" style="margin:0 0 12px">Inga behållare i skåpet än.</p>'}
+      <h3 class="small-head">Lägg till i skåpet</h3>
+      ${typeGrid(null, { only: PART_TYPES })}
+    </div>` : `<div class="section">
+      ${sectionHead('Vad ligger i?', '<span class="muted">Ett material</span>')}
       <div id="matBox"></div>
-    </div>
+    </div>`}
 
     <div class="section">
       ${sectionHead('Hur fullt?')}
@@ -451,15 +462,32 @@ async function itemView(id) {
   bindPhotos(main, photos, { visitId: item.visitId, placeId: item.placeId, itemId: id });
   bindTypeGrid(main);
   bindIdeaCards(main);
-  mountMaterialPicker(main.querySelector('#matBox'), item, 'items');
+  if (item.partsMigrated) { delete item.partsMigrated; await db.put('items', item); }
+  if (!hasParts(item)) mountMaterialPicker(main.querySelector('#matBox'), item, 'items');
 
-  main.querySelectorAll('[data-type]').forEach((b) => {
+  // Typ för kärlet (typrutnätet högst upp)
+  main.querySelectorAll('.section:not(.parts-zone) [data-type]').forEach((b) => {
     b.onclick = async () => {
       if (item.type === b.dataset.type) return;
       await changeType(item, 'items', b.dataset.type);
+      // Blev det ett miljöskåp: materialen blir behållare i skåpet.
+      if (hasParts(item) && !item.parts.length && item.materials.length) {
+        item.parts = item.materials.map((m) => ({ ...newPart(''), materials: [m] }));
+        await saveNow('items', item);
+      }
       refresh();
     };
   });
+  // Miljöskåp: lägg till en behållare i skåpet, eller öppna en
+  main.querySelectorAll('.parts-zone [data-type]').forEach((b) => {
+    b.onclick = async () => {
+      const part = newPart(b.dataset.type);
+      item.parts = [...item.parts, part];
+      await saveNow('items', item);
+      go(`#/del/${item.id}/${part.id}`);
+    };
+  });
+  main.querySelectorAll('[data-part]').forEach((b) => { b.onclick = () => go(`#/del/${item.id}/${b.dataset.part}`); });
   main.querySelectorAll('[data-fill]').forEach((b) => {
     b.onclick = () => {
       item.fill = item.fill === b.dataset.fill ? '' : b.dataset.fill;
@@ -493,6 +521,56 @@ async function itemView(id) {
     if (!confirm('Ta bort kärlet och dess bilder? Förbättringar för kärlet finns kvar.')) return;
     await db.deleteItem(id);
     go(`#/plats/${item.placeId}`);
+  };
+}
+
+// ---------- En behållare i ett miljöskåp (fat, box …) ----------
+async function partView(itemId, partId) {
+  const item = await db.get('items', itemId);
+  const part = item?.parts.find((p) => p.id === partId);
+  if (!part) return go(item ? `#/karl/${itemId}` : '#/');
+  const d = await db.loadVisit(item.visitId);
+  // Ändringar i behållaren sparas i skåpet, och skåpets material hålls i takt.
+  const saveCabinet = () => { syncParts(item); return db.put('items', item); };
+  part.kind ||= 'fa';
+
+  setTop({ back: `#/karl/${itemId}`, title: part.type ? itemLabel(part) : 'Behållare i skåpet', sub: `I ${itemLabel(item)}`, step: 'nulage', visitId: item.visitId, done: doneSteps(d) });
+  main.innerHTML = `
+    ${sectionHead('Vilken behållare?')}
+    ${typeGrid(part.type, { only: PART_TYPES })}
+    ${part.type ? `<div class="section">${sizeSection(part)}</div>` : ''}
+    <div class="section">
+      ${sectionHead('Antal')}
+      ${countStepper(part.count)}
+    </div>
+    <div class="section">
+      ${sectionHead('Vad ligger i?', '<span class="muted">Ett material</span>')}
+      <div id="matBox"></div>
+    </div>
+    <div class="danger-zone">
+      <button class="btn danger" id="delPart">${I.trash} Ta bort ur skåpet</button>
+    </div>`;
+
+  setBottom(`Klar – tillbaka till ${itemLabel(item)}`, () => go(`#/karl/${itemId}`));
+  const relabel = () => setTitle(part.type ? itemLabel(part) : 'Behållare i skåpet');
+  bindFields(main, part, saveCabinet, relabel);
+  bindChoices(main, part, saveCabinet, relabel);
+  bindSizeSection(main, part, saveCabinet, relabel);
+  bindCount(main, part, saveCabinet);
+  mountMaterialPicker(main.querySelector('#matBox'), part, saveCabinet);
+  main.querySelectorAll('[data-type]').forEach((b) => {
+    b.onclick = async () => {
+      if (part.type === b.dataset.type) return;
+      await changeType(part, saveCabinet, b.dataset.type);
+      refresh();
+    };
+  });
+  main.querySelector('#delPart').onclick = async () => {
+    if (!confirm('Ta bort behållaren ur skåpet?')) return;
+    pending.delete(part.id);
+    item.parts = item.parts.filter((p) => p.id !== partId);
+    await saveCabinet();
+    go(`#/karl/${itemId}`);
   };
 }
 
@@ -591,7 +669,7 @@ async function ideaView(id) {
         ${countStepper(idea.count)}
       </div>
       <div class="section">
-        ${sectionHead('Vad ska ligga i?', '<span class="muted">Välj ett eller flera</span>')}
+        ${sectionHead('Vad ska ligga i?', '<span class="muted">Ett material</span>')}
         <div id="matBox"></div>
       </div>` : ''}
 
@@ -706,6 +784,7 @@ const ROUTES = [
   [/^#\/plats\/([^/]+)$/, placeView],
   [/^#\/karl\/([^/]+)$/, itemView],
   [/^#\/forslag\/([^/]+)$/, ideaView],
+  [/^#\/del\/([^/]+)\/([^/]+)$/, partView],
   [/^#\/visa\/([^/]+)$/, (id) => presentView(id)],
   [/.*/, homeView],
 ];
@@ -721,7 +800,7 @@ async function render({ animate }) {
   if (!hash.startsWith('#/visa/')) leavePresent();
   for (const [re, view] of ROUTES) {
     const m = hash.match(re);
-    if (m) { await view(m[1]); break; }
+    if (m) { await view(...m.slice(1)); break; }
   }
   if (animate) {
     main.classList.remove('view');

@@ -36,13 +36,14 @@ async function commit(id) {
   if (!p) return;
   pending.delete(id);
   clearTimeout(p.t);
-  await db.put(p.store, p.obj);
+  await write(p.store, p.obj);
   flashSaved();
 }
+const write = (store, obj) => (typeof store === 'function' ? store(obj) : db.put(store, obj));
 export const flushSaves = () => Promise.all([...pending.keys()].map(commit));
 export async function saveNow(store, obj) {
   if (pending.has(obj.id)) { clearTimeout(pending.get(obj.id).t); pending.delete(obj.id); }
-  await db.put(store, obj);
+  await write(store, obj);
   flashSaved();
 }
 document.addEventListener('visibilitychange', () => { if (document.hidden) flushSaves(); });
@@ -142,8 +143,9 @@ export function bindPhotos(root, photos, link) {
 
 // ---------- Kärltyper ----------
 // De vanligaste typerna syns direkt, resten under "Fler typer".
-export function typeGrid(selected, { photoFirst = false } = {}) {
+export function typeGrid(selected, { photoFirst = false, only = null } = {}) {
   const tile = (t) => `<button class="type ${t.key === selected ? 'on' : ''}" data-type="${t.key}">${t.icon}<span>${t.tile || t.label}</span></button>`;
+  if (only) return `<div class="type-grid">${only.map((k) => tile(TYPES.find((t) => t.key === k))).join('')}</div>`;
   const more = TYPES.filter((t) => !t.main);
   const open = more.some((t) => t.key === selected);
   return `
@@ -164,6 +166,9 @@ export function bindTypeGrid(root) {
   };
 }
 
+// Vilka material som passar. Behållare i ett miljöskåp är alltid för farligt avfall.
+export const kindOf = (o) => o.kind || typeOf(o.type).kind;
+
 // Byter typ: nya storleksval, och material som inte passar (t.ex. wellpapp i miljöskåp) tas bort.
 export async function changeType(obj, store, type) {
   obj.type = type;
@@ -172,7 +177,7 @@ export async function changeType(obj, store, type) {
   obj.regLabel = '';
   const nt = typeOf(type);
   const before = obj.materials.length;
-  obj.materials = obj.materials.filter((m) => fitsKind(m, nt.kind));
+  obj.materials = obj.materials.filter((m) => fitsKind(m, obj.kind || nt.kind));
   if (!obj.materials.length && nt.defaults) obj.materials = [...nt.defaults];
   if (obj.materials.length < before) toast('Material som inte passar den nya typen togs bort');
   await saveNow(store, obj);
@@ -281,7 +286,7 @@ const matChip = (obj, m) =>
 function matResults(obj, query) {
   const q = query.trim().toLowerCase();
   if (!q) return '';
-  const kind = typeOf(obj.type).kind;
+  const kind = kindOf(obj);
   const all = [...new Set([...groupsFor(kind).flatMap((g) => g.items), ...customMaterials()])];
   const hits = all.filter((m) => m.toLowerCase().includes(q)).slice(0, 14);
   const exact = all.some((m) => m.toLowerCase() === q);
@@ -290,7 +295,7 @@ function matResults(obj, query) {
 }
 
 function materialPicker(obj, showAll = false) {
-  const kind = typeOf(obj.type).kind;
+  const kind = kindOf(obj);
   const chip = (m) => matChip(obj, m);
   const mine = customMaterials().filter((m) => fitsKind(m, kind));
   const common = [...new Set([...commonFor(kind), ...mine])].filter((m) => !obj.materials.includes(m));
@@ -299,6 +304,7 @@ function materialPicker(obj, showAll = false) {
       ${obj.materials.length ? obj.materials.map((m) =>
         `<button class="chip on removable" data-remove="${esc(m)}">${esc(m)} ${I.close}</button>`).join('')
         : '<span class="muted">Inget valt än – tryck på ett material nedan, eller sök.</span>'}
+      ${obj.materials.length > 1 ? '<span class="warn-text" style="margin:0">Flera material – ta bort de som inte ska vara med.</span>' : ''}
     </div>
     <div class="mat-search">
       <input class="input" id="matSearch" placeholder="Sök eller skriv eget material …" autocomplete="off" enterkeyhint="done">
@@ -318,10 +324,10 @@ export function mountMaterialPicker(box, obj, store, { showAll = false, focus = 
   const add = (m) => {
     m = m.trim();
     if (!m) return;
-    const kind = typeOf(obj.type).kind;
+    const kind = kindOf(obj);
     const known = allMaterialNames().find((x) => x.toLowerCase() === m.toLowerCase());
     m = known || m;
-    if (!obj.materials.includes(m)) obj.materials = [...obj.materials, m];
+    obj.materials = [m]; // ett material per behållare – ett nytt val ersätter det gamla
     if (!known) rememberCustom(m);
     if (known && !fitsKind(known, kind)) toast(`Obs: ${known} hör normalt inte hemma i ${typeOf(obj.type).label.toLowerCase()}`);
     saveNow(store, obj);
